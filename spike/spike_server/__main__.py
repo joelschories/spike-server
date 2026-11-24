@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import sys
 
 from aiohttp import web
@@ -83,9 +84,15 @@ async def main():
     print(f"[spike] Spike {VERSION} läuft verschlüsselt auf Port {state.config.port} ({state.config.mode})", flush=True)
     if state.store.paired_count() == 0:
         print("[spike] Noch kein Gerät verbunden – öffne die Spike-App, um dich zu verbinden.", flush=True)
+    # Beim Beenden (systemd, Docker, Home Assistant senden SIGTERM) sauber aus dem Netz abmelden
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop.set)
     try:
-        await asyncio.Event().wait()
+        await stop.wait()
     finally:
+        print("[spike] Wird beendet, melde mich im Heimnetz ab …", flush=True)
         await announcer.stop()
         await runner.cleanup()
 
