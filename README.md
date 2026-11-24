@@ -21,6 +21,18 @@ docker run -d --name spike --restart unless-stopped --network host -v spike-data
 
 Danach die Spike-App öffnen: Sie findet den Server automatisch, verbindet sich und fragt nach den Router-Zugangsdaten.
 
+## Schutzfilter
+
+Spike bringt einen eigenen DNS-Server mit (Port 53, UDP und TCP). Er blockiert Werbung, Tracker, Betrug und
+Schadsoftware für alle Geräte im Heimnetz, optional auch Glücksspiel und Erwachseneninhalte, und kann SafeSearch
+erzwingen. Alle übrigen Anfragen gehen verschlüsselt (DNS over HTTPS) an Quad9, Cloudflare oder Google.
+Namen aus dem Heimnetz (z. B. `fritz.box`) beantwortet weiterhin der Router.
+
+Blocklisten: [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists), werden alle 6 Stunden aktualisiert.
+
+Aktivieren: In der FRITZ!Box unter Internet › Zugangsdaten › DNS-Server die IP-Adresse von Spike als
+bevorzugten und alternativen DNSv4-Server eintragen. Ohne den Filter: Umgebungsvariable `SPIKE_DNS=0`.
+
 ## Sicherheit
 
 - TLS mit eigenem Zertifikat; die App pinnt den Fingerabdruck beim ersten Kontakt.

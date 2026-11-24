@@ -9,6 +9,15 @@ auf deinem Raspberry und hat nichts mit Home Assistant zu tun.
 2. Spike-App öffnen und dem Einrichtungs-Guide folgen. Die App findet Spike automatisch.
 3. In der App deinen Router verbinden.
 
+## Schutzfilter (Werbeblocker)
+
+Spike enthält einen DNS-Server, der Werbung, Tracker und gefährliche Seiten für alle Geräte blockiert.
+Er nutzt Port 53 auf deinem Raspberry. Läuft dort schon AdGuard Home oder Pi-hole, meldet die App das.
+
+Damit der Filter wirkt, trägst du Spike einmal als DNS-Server in der FRITZ!Box ein
+(Internet › Zugangsdaten › DNS-Server). Die App zeigt dir die genauen Schritte und die Adresse.
+Home Assistant läuft dabei unverändert weiter.
+
 ## Sicherheit
 
 - Die Verbindung zwischen App und Spike ist verschlüsselt (TLS). Die App merkt sich das Zertifikat

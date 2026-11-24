@@ -52,7 +52,14 @@ class Demo:
     def snapshot(self) -> dict:
         snap = {
             "router": {"vendor": "AVM", "model": "FRITZ!Box (Demo)", "firmware": "8.25", "updateAvailable": False,
-                       "uptimeSeconds": 3 * 86400, "capabilities": ALL_CAPABILITIES},
+                       "uptimeSeconds": 3 * 86400, "capabilities": ALL_CAPABILITIES,
+                       "internet": {"online": True, "uptimeSeconds": 2 * 86400, "downstreamMbit": 1000,
+                                    "upstreamMbit": 50, "accessType": "DOCSIS"},
+                       "user": "spike", "canWrite": True, "twoFactor": True,
+                       "wps": any(c["id"] == "wps" and c["status"] != "ok" for c in self.checks),
+                       "upnp": any(c["id"] == "upnp" and c["status"] != "ok" for c in self.checks),
+                       "wifi": [{"ssid": "Zuhause", "band": "2400", "enabled": True, "channel": "6", "security": "WPA2 + WPA3"},
+                                {"ssid": "Zuhause", "band": "5000", "enabled": True, "channel": "36", "security": "WPA2 + WPA3"}]},
             "devices": self.devices, "guest": self.guest, "checks": self.checks, "filter": self.filter,
             "events": self.store.events(), "score": 0, "generatedAt": utc_now(), "routerConnected": True,
         }
@@ -74,6 +81,14 @@ class Demo:
 
     def rotate_guest(self):
         self.guest["password"] = _password()
+
+    def set_check(self, check_id, on):
+        """WPS/UPnP im Beispielhaushalt ein- oder ausschalten."""
+        label = check_id.upper()
+        for c in self.checks:
+            if c["id"] == check_id:
+                c.update(status="warning" if on else "ok", fixLabel=f"{label} deaktivieren" if on else None,
+                         title=f"{label} ist aktiviert" if on else f"{label} ist deaktiviert")
 
     def fix(self, check_id):
         for c in self.checks:

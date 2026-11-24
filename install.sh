@@ -51,6 +51,9 @@ WorkingDirectory=$APP_DIR
 ExecStart=$APP_DIR/venv/bin/python -m spike_server
 Restart=always
 RestartSec=5
+# Port 53 für den Schutzfilter (DNS) – nur dieses eine Sonderrecht
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -44,8 +44,18 @@ class Config:
         self.router = router
 
 
+def default_data_dir() -> str:
+    """Home Assistant startet Add-ons über s6-overlay, dabei gehen Umgebungsvariablen aus dem
+    Dockerfile verloren. Den Add-on-Speicher /data erkennt Spike deshalb selbst."""
+    if os.environ.get("SPIKE_DATA"):
+        return os.environ["SPIKE_DATA"]
+    if os.path.isfile("/data/options.json") or (os.path.isdir("/data") and os.access("/data", os.W_OK)):
+        return "/data"
+    return "./data"
+
+
 def load() -> Config:
-    data_dir = Path(os.environ.get("SPIKE_DATA", "./data")).resolve()
+    data_dir = Path(default_data_dir()).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(data_dir, 0o700)
 
@@ -61,7 +71,7 @@ def load() -> Config:
     if router_file.exists():
         router = RouterSettings(**json.loads(router_file.read_text()))
 
-    mode = os.environ.get("SPIKE_MODE") or ("addon" if options_file.exists() else "standalone")
+    mode = "addon" if options_file.exists() else (os.environ.get("SPIKE_MODE") or "standalone")
     return Config(
         data_dir=data_dir,
         port=int(os.environ.get("SPIKE_PORT", "8765")),
