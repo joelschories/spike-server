@@ -66,6 +66,19 @@ class FritzBox:
         self.base = f"http://{host}:49000"
         self.client = httpx.AsyncClient(auth=httpx.DigestAuth(user, password), timeout=12)
         self.control: Dict[str, str] = {}
+        # Die FRITZ!Box verträgt keine parallelen Digest-Anmeldungen (Nonce-Zähler) und sperrt den Zugang
+        # nach mehreren Fehlversuchen kurz. Deshalb geht immer nur eine Anfrage gleichzeitig hinaus.
+        self.lock = asyncio.Lock()
+        self._cache: Dict[str, tuple] = {}
+
+    async def cached(self, key: str, seconds: float, fetch):
+        """Selten wechselnde Werte (Rechte, Update, Portfreigaben …) nur alle paar Minuten abfragen."""
+        hit = self._cache.get(key)
+        if hit and hit[1] > time.time():
+            return hit[0]
+        value = await fetch()
+        self._cache[key] = (value, time.time() + seconds)
+        return value
 
     async def connect(self) -> None:
         """Liest die Dienstbeschreibung, um die Steuer-URLs zu kennen."""
@@ -87,10 +100,11 @@ class FritzBox:
         body = SOAP_ENV.format(header=TOKEN_HEADER.format(token) if token else "", action=action, service=service,
                                args="".join(f"<{k}>{escape(str(v))}</{k}>" for k, v in args.items()))
         try:
-            r = await self.client.post(url, content=body.encode(), headers={
-                "Content-Type": 'text/xml; charset="utf-8"',
-                "SOAPAction": f"{service}#{action}",
-            })
+            async with self.lock:
+                r = await self.client.post(url, content=body.encode(), headers={
+                    "Content-Type": 'text/xml; charset="utf-8"',
+                    "SOAPAction": f"{service}#{action}",
+                })
         except httpx.HTTPError as exc:
             raise ConnectionError(f"FRITZ!Box nicht erreichbar: {exc}") from exc
         if r.status_code == 401:
@@ -129,7 +143,9 @@ class FritzBox:
         res = await self.try_call(HOSTS, "X_AVM-DE_GetHostListPath")
         if not res:
             return []
-        r = await self.client.get(self.base + res["NewX_AVM-DE_HostListPath"])
+        async with self.lock:
+            r = await self.client.get(self.base + res["NewX_AVM-DE_HostListPath"])
+        r.raise_for_status()
         hosts = []
         for item in ET.fromstring(r.text).iter("Item"):
             hosts.append({_local(c.tag): (c.text or "") for c in item})

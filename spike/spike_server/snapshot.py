@@ -1,7 +1,6 @@
 """Baut das Gesamtbild im Format der App (siehe app/Spike/Model/Models.swift)."""
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -86,9 +85,20 @@ def _security_label(beacon: str) -> str:
 
 
 async def from_fritzbox(fb, store, overrides: Overrides, dns=None, server_ip: str = "", server_ipv6: Optional[str] = None) -> dict:
-    (info, hosts, guest, wps, upnp, forwards, remote, update, internet, user, two_factor, wifi) = await asyncio.gather(
-        fb.info(), fb.hosts(), fb.guest_wifi(), fb.wps_active(), fb.upnp(), fb.port_forwards(), fb.remote_access(),
-        fb.update_info(), fb.internet(), fb.current_user(), fb.two_factor_enabled(), fb.wifi())
+    # Erst prüfen, ob die Anmeldung klappt: sonst lieber eine klare Fehlermeldung als ein leeres Bild
+    await fb.call("urn:dslforum-org:service:Hosts:1", "GetHostNumberOfEntries")
+    info = await fb.cached("info", 60, fb.info)
+    hosts = await fb.hosts()
+    guest = await fb.guest_wifi()
+    wps = await fb.wps_active()
+    upnp = await fb.upnp()
+    internet = await fb.cached("internet", 60, fb.internet)
+    forwards = await fb.cached("forwards", 300, fb.port_forwards)
+    remote = await fb.cached("remote", 300, fb.remote_access)
+    update = await fb.cached("update", 1800, fb.update_info)
+    user = await fb.cached("user", 300, fb.current_user)
+    two_factor = await fb.cached("2fa", 300, fb.two_factor_enabled)
+    wifi = await fb.cached("wifi", 120, fb.wifi)
 
     devices = []
     names: Dict[str, str] = {}

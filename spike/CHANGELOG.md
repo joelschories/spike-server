@@ -1,3 +1,12 @@
+## 0.3.1
+- Router-Abfragen gehen nacheinander statt gleichzeitig hinaus. Parallele Anmeldungen hat die FRITZ!Box
+  abgelehnt, dadurch blieb die Übersicht leer.
+- Klappt die Anmeldung am Router nicht, meldet Spike das jetzt klar, statt leere Daten zu liefern.
+- Schutzfilter: Ist Port 53 auf einer internen Adresse belegt (z. B. unter Home Assistant OS), lauscht Spike
+  direkt auf seiner Heimnetz-Adresse.
+- Spike startet nach einem unerwarteten Fehler von selbst neu.
+- Neu: Diagnose (Version, Schutzfilter, letzte Protokollzeilen) für die Fehlersuche in der App.
+
 ## 0.3.0
 - Schutzfilter: eingebauter DNS-Server blockiert Werbung, Tracker, Betrug und Schadsoftware für das ganze
   Heimnetz. Optional Glücksspiel, Erwachseneninhalte und SafeSearch. Weiterleitung verschlüsselt (DNS over HTTPS).

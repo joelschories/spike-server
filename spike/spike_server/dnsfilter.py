@@ -203,6 +203,7 @@ class DnsFilter:
         self.lists_updated: Optional[str] = None
         self.cache: Dict[Tuple[str, int], Tuple[bytes, float]] = {}
         self.available = False
+        self.bound = ""
         self.problem: Optional[str] = None
         self.client: Optional[httpx.AsyncClient] = None
         self._transports = []
@@ -541,35 +542,61 @@ class DnsFilter:
             finally:
                 writer.close()
 
-        try:
-            sock4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock4.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock4.bind(("0.0.0.0", self.port))
-            t, _ = await loop.create_datagram_endpoint(Udp, sock=sock4)
-            self._transports.append(t)
-            self._servers.append(await asyncio.start_server(tcp, "0.0.0.0", self.port, reuse_address=True))
-        except OSError as exc:
+        # Zuerst auf allen Adressen lauschen. Belegt ein anderer Dienst Port 53 nur auf einer internen Adresse
+        # (z. B. 127.0.0.53 bei systemd-resolved oder das Docker-Netz unter Home Assistant OS),
+        # weicht Spike auf die Heimnetz-Adresse aus.
+        from .discovery import lan_ip
+        errors = []
+        for host in ("0.0.0.0", lan_ip()):
+            try:
+                await self._bind(socket.AF_INET, host, Udp, tcp)
+                self.bound = host
+                break
+            except OSError as exc:
+                errors.append(f"{host}: {exc}")
+                self._close_listeners()
+        else:
             self.available = False
             self.problem = (f"Port {self.port} ist auf diesem Gerät schon belegt, wahrscheinlich durch einen anderen "
                             "DNS-Dienst (z. B. AdGuard Home oder Pi-hole). Spike kann den Filter deshalb nicht starten.")
-            print(f"[spike] Schutzfilter nicht gestartet: {exc}", flush=True)
+            print(f"[spike] Schutzfilter nicht gestartet: {'; '.join(errors)}", flush=True)
             return
-        try:  # IPv6 zusätzlich, falls vorhanden
-            sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-            sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-            sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock6.bind(("::", self.port))
-            t, _ = await loop.create_datagram_endpoint(Udp, sock=sock6)
-            self._transports.append(t)
-            self._servers.append(await asyncio.start_server(tcp, "::", self.port, reuse_address=True))
-        except OSError:
-            pass
+        v6 = lan_ipv6()
+        for host in ("::", v6):   # IPv6 zusätzlich, falls vorhanden
+            if not host:
+                continue
+            try:
+                await self._bind(socket.AF_INET6, host, Udp, tcp)
+                break
+            except OSError:
+                pass
         self.available = True
         self.problem = None
-        print(f"[spike] Schutzfilter lauscht auf Port {self.port} (DNS)", flush=True)
+        print(f"[spike] Schutzfilter lauscht auf {self.bound}:{self.port} (DNS)", flush=True)
         self._tasks.append(asyncio.ensure_future(self._startup_lists()))
         self._tasks.append(asyncio.ensure_future(self._refresh_loop()))
         self._tasks.append(asyncio.ensure_future(self._persist_loop()))
+
+    async def _bind(self, family, host: str, udp_protocol, tcp_handler) -> None:
+        loop = asyncio.get_running_loop()
+        sock = socket.socket(family, socket.SOCK_DGRAM)
+        if family == socket.AF_INET6:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        try:
+            sock.bind((host, self.port))
+        except OSError:
+            sock.close()
+            raise
+        transport, _ = await loop.create_datagram_endpoint(udp_protocol, sock=sock)
+        self._transports.append(transport)
+        self._servers.append(await asyncio.start_server(tcp_handler, host, self.port))
+
+    def _close_listeners(self) -> None:
+        for t in self._transports:
+            t.close()
+        for srv in self._servers:
+            srv.close()
+        self._transports, self._servers = [], []
 
     async def _startup_lists(self) -> None:
         await self.load_lists(download=False)     # sofort aus dem Zwischenspeicher

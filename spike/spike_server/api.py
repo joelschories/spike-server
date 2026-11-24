@@ -63,6 +63,20 @@ def build_app(state) -> web.Application:
             "routerConfigured": state.router_ready, "fingerprint": state.fingerprint,
         })
 
+    @routes.get("/api/diagnostics")
+    async def diagnostics(request):
+        import platform
+        fb = state.fritz
+        return web.json_response({
+            "version": VERSION, "mode": state.config.mode, "dataDir": str(state.config.data_dir),
+            "python": platform.python_version(), "uptimeSeconds": int(__import__("time").time() - state.started),
+            "router": state.config.router.host if state.router_ready else None,
+            "routerServices": len(fb.control) if fb else 0,
+            "dns": {"available": state.dns.available, "address": state.dns.bound, "port": state.dns.port,
+                    "lists": state.dns.list_sizes, "problem": state.dns.problem},
+            "log": list(state.log)[-120:],
+        })
+
     # --- Kopplung -------------------------------------------------------------
     @routes.post("/api/pair")
     async def pair(request):
