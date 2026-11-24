@@ -8,5 +8,5 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 COPY spike_server /app/spike_server
 WORKDIR /app
-ENV SPIKE_DATA=/data
+ENV SPIKE_DATA=/data SPIKE_MODE=docker
 CMD ["python3", "-m", "spike_server"]

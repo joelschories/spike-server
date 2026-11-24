@@ -1,9 +1,4 @@
 configuration:
-  fritz_host:
-    name: Adresse der FRITZ!Box
-    description: Meist 192.168.178.1 oder fritz.box
-  fritz_user:
-    name: FRITZ!Box-Benutzer
-    description: Am besten ein eigener Benutzer nur für Spike (FRITZ!Box › System › FRITZ!Box-Benutzer). Leer lassen für den Demo-Modus.
-  fritz_password:
-    name: Passwort dieses Benutzers
+  reset_pairing:
+    name: Kopplungen zurücksetzen
+    description: Nur im Notfall, z. B. wenn alle verbundenen Geräte verloren sind. Danach kann sich wieder ein Gerät frei verbinden. Nach dem Neustart wieder ausschalten.

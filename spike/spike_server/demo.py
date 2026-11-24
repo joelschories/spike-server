@@ -54,7 +54,7 @@ class Demo:
             "router": {"vendor": "AVM", "model": "FRITZ!Box (Demo)", "firmware": "8.25", "updateAvailable": False,
                        "uptimeSeconds": 3 * 86400, "capabilities": ALL_CAPABILITIES},
             "devices": self.devices, "guest": self.guest, "checks": self.checks, "filter": self.filter,
-            "events": self.store.events(), "score": 0, "generatedAt": utc_now(),
+            "events": self.store.events(), "score": 0, "generatedAt": utc_now(), "routerConnected": True,
         }
         snap["score"] = compute_score(self.checks, self.devices)
         return snap

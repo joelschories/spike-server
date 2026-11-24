@@ -121,6 +121,23 @@ async def from_fritzbox(fb, store) -> dict:
         "events": store.events(),
         "score": 0,
         "generatedAt": utc_now(),
+        "routerConnected": True,
     }
     snap["score"] = compute_score(checks, devices)
     return snap
+
+
+def empty_snapshot(store) -> dict:
+    """Noch kein Router verbunden: leeres Bild, die App zeigt dann „Router verbinden“."""
+    return {
+        "router": {"vendor": "", "model": "Nicht verbunden", "firmware": "–", "updateAvailable": False,
+                   "uptimeSeconds": 0, "capabilities": []},
+        "devices": [],
+        "guest": {"enabled": False, "ssid": "", "password": "", "security": "", "isolated": True},
+        "checks": [],
+        "filter": {"available": False, "enabled": False, "queriesToday": 0, "blockedToday": 0, "topBlocked": []},
+        "events": store.events(),
+        "score": 0,
+        "generatedAt": utc_now(),
+        "routerConnected": False,
+    }

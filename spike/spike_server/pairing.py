@@ -1,56 +1,53 @@
-"""Kopplung per 6-stelligem Code.
+"""Kopplung von iPhone/Mac mit dem Server.
 
-Sicherheit: Der Code gilt 10 Minuten und nur einmal. Nach 5 Fehlversuchen werden
-weitere Versuche für 5 Minuten abgelehnt (gegen Durchprobieren im Heimnetz).
-Der Code ist nur in Home Assistant (Ingress) bzw. im Server-Log sichtbar.
+- Solange noch kein Gerät gekoppelt ist, darf sich das erste Gerät ohne Code verbinden.
+- Jedes weitere Gerät stellt eine Anfrage, die auf einem bereits gekoppelten Gerät
+  erlaubt oder abgelehnt wird. Anfragen verfallen nach 10 Minuten.
+- Höchstens 3 offene Anfragen gleichzeitig (gegen Fluten aus dem Heimnetz).
 """
 from __future__ import annotations
 
 import secrets
 import time
+from dataclasses import dataclass, field
+from typing import Optional
 
-CODE_LIFETIME = 600
-MAX_FAILURES = 5
-LOCKOUT = 300
+REQUEST_LIFETIME = 600
+MAX_PENDING = 3
+
+
+@dataclass
+class PairRequest:
+    id: str
+    device_name: str
+    created: float = field(default_factory=time.monotonic)
+    status: str = "pending"          # pending | approved | denied
+    token: Optional[str] = None      # wird genau einmal an das anfragende Gerät ausgeliefert
+
+    @property
+    def expired(self) -> bool:
+        return time.monotonic() - self.created > REQUEST_LIFETIME
 
 
 class Pairing:
     def __init__(self) -> None:
-        self._code = ""
-        self._expires = 0.0
-        self._failures: list = []
-        self._locked_until = 0.0
-        self.rotate()
+        self.requests: dict = {}
 
-    def rotate(self) -> None:
-        self._code = f"{secrets.randbelow(1_000_000):06d}"
-        self._expires = time.monotonic() + CODE_LIFETIME
-        print(f"[spike] Kopplungscode: {self._code[:3]} {self._code[3:]} (gültig 10 Minuten)", flush=True)
+    def _cleanup(self) -> None:
+        for rid in [r.id for r in self.requests.values() if r.expired]:
+            del self.requests[rid]
 
-    @property
-    def code(self) -> str:
-        if time.monotonic() > self._expires:
-            self.rotate()
-        return self._code
+    def pending(self) -> list:
+        self._cleanup()
+        return [r for r in self.requests.values() if r.status == "pending"]
 
-    @property
-    def seconds_left(self) -> int:
-        return max(0, int(self._expires - time.monotonic()))
+    def create(self, device_name: str) -> Optional[PairRequest]:
+        if len(self.pending()) >= MAX_PENDING:
+            return None
+        req = PairRequest(id=secrets.token_urlsafe(12), device_name=device_name[:60] or "Gerät")
+        self.requests[req.id] = req
+        return req
 
-    def locked(self) -> bool:
-        return time.monotonic() < self._locked_until
-
-    def verify(self, attempt: str) -> bool:
-        if self.locked():
-            return False
-        attempt = "".join(ch for ch in attempt if ch.isdigit())
-        if len(attempt) == 6 and secrets.compare_digest(attempt, self.code):
-            self.rotate()  # nur einmal gültig
-            return True
-        now = time.monotonic()
-        self._failures = [t for t in self._failures if now - t < LOCKOUT] + [now]
-        if len(self._failures) >= MAX_FAILURES:
-            self._locked_until = now + LOCKOUT
-            self._failures.clear()
-            print("[spike] Zu viele falsche Kopplungscodes – Kopplung 5 Minuten gesperrt.", flush=True)
-        return False
+    def get(self, rid: str) -> Optional[PairRequest]:
+        self._cleanup()
+        return self.requests.get(rid)

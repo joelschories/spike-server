@@ -1,7 +1,9 @@
+# Spike läuft hier nur als Container auf deinem Raspberry. Es erscheint nicht in
+# Home Assistant und greift nicht darauf zu – Home Assistant dient nur als Installationsweg.
 name: Spike
-version: "0.1.0"
+version: "0.2.0"
 slug: spike
-description: Heimnetz-Sicherheit für deine FRITZ!Box – Geräte-Wächter, Sicherheits-Checks und Gast-WLAN für die Spike-App.
+description: Spike-Server für die Spike-App (Heimnetz-Sicherheit). Läuft unabhängig von Home Assistant.
 url: https://github.com/spikeshield/spike-addons
 arch:
   - aarch64
@@ -9,17 +11,10 @@ arch:
 startup: application
 boot: auto
 init: false
-# Spike muss das Heimnetz sehen (Router erreichen, sich per Bonjour melden)
 host_network: true
-ingress: true
-ingress_port: 8765
-panel_icon: mdi:shield-check
-panel_title: Spike
+environment:
+  SPIKE_MODE: addon
 options:
-  fritz_host: "192.168.178.1"
-  fritz_user: ""
-  fritz_password: ""
+  reset_pairing: false
 schema:
-  fritz_host: str
-  fritz_user: str?
-  fritz_password: password?
+  reset_pairing: bool

@@ -51,6 +51,10 @@ class Store:
     def paired_count(self) -> int:
         return len(self.data["tokens"])
 
+    def reset_pairing(self) -> None:
+        self.data["tokens"] = []
+        self.save()
+
     # --- Geräte ------------------------------------------------------------
     def device(self, mac: str) -> dict:
         devices = self.data["devices"]

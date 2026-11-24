@@ -19,14 +19,14 @@ def lan_ip() -> str:
 
 
 class Announcer:
-    def __init__(self, name: str, port: int, server_id: str, version: str):
+    def __init__(self, name: str, port: int, server_id: str, version: str, fingerprint: str, mode: str):
         self.ip = lan_ip()
         self.info = AsyncServiceInfo(
             "_spike._tcp.local.",
             f"{name}._spike._tcp.local.",
             addresses=[socket.inet_aton(self.ip)],
             port=port,
-            properties={"id": server_id, "version": version, "ip": self.ip, "port": str(port)},
+            properties={"id": server_id, "version": version, "ip": self.ip, "port": str(port), "fp": fingerprint, "mode": mode},
             server=f"spike-{server_id[:8]}.local.",
         )
         self.zc = AsyncZeroconf(ip_version=IPVersion.V4Only)
