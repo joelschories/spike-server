@@ -7,7 +7,7 @@ Server für die Spike-App (Heimnetz-Sicherheit für iPhone und Mac). Open Source
 **Raspberry mit Raspberry Pi OS** (eigenständiges Programm, startet automatisch):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/spikeshield/spike-addons/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joelschories/spike-server/main/install.sh | sudo bash
 ```
 
 **Raspberry mit Home Assistant OS:** Diese Adresse in Home Assistant als Add-on-Paketquelle hinzufügen
@@ -16,7 +16,7 @@ und das Add-on „Spike“ installieren. Spike läuft dort nur als Container und
 **Docker:**
 
 ```bash
-docker run -d --name spike --restart unless-stopped --network host -v spike-data:/data ghcr.io/spikeshield/spike:latest
+docker run -d --name spike --restart unless-stopped --network host -v spike-data:/data ghcr.io/joelschories/spike-server:latest
 ```
 
 Danach die Spike-App öffnen: Sie findet den Server automatisch, verbindet sich und fragt nach den Router-Zugangsdaten.

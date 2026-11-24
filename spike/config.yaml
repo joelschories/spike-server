@@ -4,7 +4,7 @@ name: Spike
 version: "0.2.0"
 slug: spike
 description: Spike-Server für die Spike-App (Heimnetz-Sicherheit). Läuft unabhängig von Home Assistant.
-url: https://github.com/spikeshield/spike-addons
+url: https://github.com/joelschories/spike-server
 arch:
   - aarch64
   - amd64

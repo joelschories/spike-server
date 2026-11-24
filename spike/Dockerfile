@@ -2,6 +2,9 @@
 # Als normales Docker-Image: docker build -t spike . && docker run --network host -v spike-data:/data spike
 ARG BUILD_FROM=python:3.12-alpine
 FROM ${BUILD_FROM}
+LABEL org.opencontainers.image.source="https://github.com/joelschories/spike-server" \
+      org.opencontainers.image.description="Spike-Server – Heimnetz-Sicherheit" \
+      org.opencontainers.image.licenses="MIT"
 
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt

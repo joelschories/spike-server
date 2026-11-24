@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Spike auf einem Raspberry mit Raspberry Pi OS (oder Debian/Ubuntu) installieren:
-#   curl -fsSL https://raw.githubusercontent.com/spikeshield/spike-addons/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/joelschories/spike-server/main/install.sh | sudo bash
 # Installiert Spike als eigenen Systemdienst, der beim Hochfahren automatisch startet.
 set -euo pipefail
 
-REPO="${SPIKE_REPO:-https://github.com/spikeshield/spike-addons}"
+REPO="${SPIKE_REPO:-https://github.com/joelschories/spike-server}"
 BRANCH="${SPIKE_BRANCH:-main}"
 APP_DIR=/opt/spike
 DATA_DIR=/var/lib/spike
