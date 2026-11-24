@@ -66,6 +66,9 @@ class State:
         self.ipv6 = lan_ipv6()
         self.log = LOG
         self.started = time.time()
+        self._snap = None
+        self._snap_time = 0.0
+        self._snap_lock = asyncio.Lock()
 
     @property
     def router_ready(self) -> bool:
@@ -128,7 +131,32 @@ class State:
             raise ConnectionError("Spike ist noch mit keinem Router verbunden.")
         await self.confirmations.run(self.fritz, title, action, on_done)
 
-    async def snapshot(self) -> dict:
+    async def snapshot(self, fresh: bool = False) -> dict:
+        """Gesamtbild, höchstens 4 Sekunden alt. Viele Apps können so alle paar Sekunden fragen,
+        ohne dass die FRITZ!Box öfter als nötig abgefragt wird. Nach Änderungen: `fresh=True`."""
+        now = time.time()
+        if not fresh and self._snap is not None and now - self._snap_time < 4:
+            return self._snap
+        async with self._snap_lock:
+            if not fresh and self._snap is not None and time.time() - self._snap_time < 4:
+                return self._snap
+            snap = await self._build_snapshot()
+            self._snap, self._snap_time = snap, time.time()
+            return snap
+
+    def invalidate(self) -> None:
+        self._snap = None
+
+    async def watch(self) -> None:
+        """Auch ohne geöffnete App regelmäßig nachsehen, damit neue Geräte sofort im Protokoll landen."""
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await self.snapshot()
+            except Exception as exc:
+                print(f"[spike] Hintergrundprüfung fehlgeschlagen: {exc}", flush=True)
+
+    async def _build_snapshot(self) -> dict:
         if self.demo:
             snap = self.demo.snapshot()
             if self.dns.available:
@@ -158,6 +186,7 @@ async def main():
         announcer = Announcer(state.config.server_name, state.config.port, state.store.server_id, VERSION,
                               state.fingerprint, state.config.mode)
         await announcer.start()
+        watcher = asyncio.ensure_future(state.watch())
         print(f"[spike] Spike {VERSION} läuft verschlüsselt auf Port {state.config.port} ({state.config.mode}, "
               f"Daten in {state.config.data_dir})", flush=True)
         if state.store.paired_count() == 0:
@@ -168,6 +197,7 @@ async def main():
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, stop.set)
         await stop.wait()
+        watcher.cancel()
         print("[spike] Wird beendet, melde mich im Heimnetz ab …", flush=True)
     finally:
         # Auch nach einem Fehler alles freigeben, damit ein Neustart die Ports wieder bekommt

@@ -1,3 +1,9 @@
+## 0.3.2
+- Eigenes Icon und Logo in Home Assistant.
+- Gast-WLAN direkt aus der App einrichten (Name, sicheres Passwort) und unsichtbar schalten.
+- Spike hält ein aktuelles Gesamtbild bereit und prüft auch ohne geöffnete App alle 30 Sekunden
+  auf neue Geräte. Die App kann so alle paar Sekunden aktualisieren, ohne die FRITZ!Box zu belasten.
+
 ## 0.3.1
 - Router-Abfragen gehen nacheinander statt gleichzeitig hinaus. Parallele Anmeldungen hat die FRITZ!Box
   abgelehnt, dadurch blieb die Übersicht leer.

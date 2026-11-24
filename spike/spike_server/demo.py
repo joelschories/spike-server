@@ -1,6 +1,7 @@
 """Demo-Modus ohne Router-Zugangsdaten: ein Beispielhaushalt, der sich wie ein echtes Netz verhält."""
 from __future__ import annotations
 
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -36,7 +37,10 @@ class Demo:
             dev("D2:41:7A:9E:03:01", "Galaxy-A52", "phone", "192.168.178.57", None, "wifi24", trusted=False, first=6),
             dev("6A:11:0C:44:10:01", "Lenas iPhone", "phone", "192.168.179.20", "Apple", "wifi5", trusted=False, guest=True, first=day * 12),
         ]
-        self.guest = {"enabled": True, "ssid": "Spike Gäste", "password": _password(), "security": "WPA2 + WPA3", "isolated": True}
+        self.guest = {"enabled": True, "ssid": "Spike Gäste", "password": _password(), "security": "WPA2 + WPA3", "isolated": True,
+                      "hidden": False, "configured": True, "supported": True}
+        if os.environ.get("SPIKE_DEMO_NO_GUEST") == "1":   # zum Testen: Router ohne eingerichtetes Gast-WLAN
+            self.guest.update(enabled=False, ssid="", password="", configured=False)
         self.checks = [
             check("firmware", "Firmware ist aktuell", "Auf deinem Router läuft die neueste Version.", "ok", "router"),
             check("wps", "WPS ist aktiviert", "Über WPS kann sich ein Gerät per Knopfdruck ohne Passwort verbinden. Wenn du die Funktion nicht nutzt, solltest du sie deaktivieren.", "warning", "wifi", "WPS deaktivieren"),

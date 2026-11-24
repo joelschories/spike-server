@@ -48,8 +48,8 @@ def build_app(state) -> web.Application:
             return {}
         return data if isinstance(data, dict) else {}
 
-    async def snapshot_response():
-        return web.json_response(await state.snapshot())
+    async def snapshot_response(fresh: bool = True):
+        return web.json_response(await state.snapshot(fresh=fresh))
 
     @routes.get("/")
     async def index(request):
@@ -193,7 +193,7 @@ def build_app(state) -> web.Application:
     # --- Netzwerk ----------------------------------------------------------------
     @routes.get("/api/snapshot")
     async def snapshot(request):
-        return await snapshot_response()
+        return await snapshot_response(fresh=False)
 
     @routes.post("/api/devices/trust")
     async def trust_many(request):
@@ -265,6 +265,47 @@ def build_app(state) -> web.Application:
             state.overrides.set("guest", enabled)
             store.log("guestOn" if enabled else "guestOff", "Gast-WLAN eingeschaltet" if enabled else "Gast-WLAN ausgeschaltet")
         await state.router_action("Gast-WLAN einschalten" if enabled else "Gast-WLAN ausschalten", go, done)
+        return await snapshot_response()
+
+    @routes.post("/api/guest/settings")
+    async def guest_settings(request):
+        """Gast-WLAN einrichten oder ändern: Name, Sichtbarkeit, einschalten. Fehlt ein Passwort, erzeugt Spike eines."""
+        data = await body(request)
+        ssid = str(data.get("ssid", "")).strip()[:32] or None
+        hidden = data.get("hidden")
+        enable = data.get("enable")
+        snap = await state.snapshot()
+        needs_password = not snap["guest"].get("password")
+        password = _password() if needs_password else None
+        if ssid is not None and len(ssid.encode()) > 32:
+            raise ValueError("Der Name darf höchstens 32 Zeichen lang sein.")
+
+        async def go(token):
+            if state.demo:
+                g = state.demo.guest
+                if ssid: g["ssid"] = ssid
+                if hidden is not None: g["hidden"] = bool(hidden)
+                if password: g["password"] = password
+                if enable is not None: g["enabled"] = bool(enable)
+                g["configured"] = bool(g["ssid"] and g["password"])
+                return
+            fb = state.fritz
+            if ssid:
+                await fb.set_guest_ssid(ssid, token)
+            if password:
+                await fb.set_guest_password(password, token)
+            if hidden is not None:
+                await fb.set_guest_hidden(bool(hidden), token)
+            if enable is not None:
+                await fb.set_guest(bool(enable), token)
+
+        def done():
+            if enable is not None:
+                state.overrides.set("guest", bool(enable))
+            if hidden is not None:
+                state.overrides.set("guestHidden", bool(hidden))
+            store.log("guestOn", "Gast-WLAN eingerichtet" if needs_password else "Gast-WLAN geändert")
+        await state.router_action("Gast-WLAN einrichten" if needs_password else "Gast-WLAN ändern", go, done)
         return await snapshot_response()
 
     @routes.post("/api/guest/rotate")

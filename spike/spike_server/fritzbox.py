@@ -172,9 +172,11 @@ class FritzBox:
         info = await self.try_call(svc, "GetInfo") or {}
         keys = await self.try_call(svc, "GetSecurityKeys") or {}
         ext = await self.try_call(svc, "X_AVM-DE_GetWLANExtInfo") or {}
+        beacon = await self.try_call(svc, "GetBeaconAdvertisement") or {}
         return {"enabled": info.get("NewEnable") == "1", "ssid": info.get("NewSSID", ""),
                 "password": keys.get("NewKeyPassphrase", ""), "beacon": info.get("NewBeaconType", ""),
-                "isolated": ext.get("NewX_AVM-DE_UserIsolation", "1") != "0", "supported": True}
+                "isolated": ext.get("NewX_AVM-DE_UserIsolation", "1") != "0", "supported": True,
+                "hidden": beacon.get("NewBeaconAdvertisementEnabled", "1") == "0"}
 
     async def wifi(self) -> List[dict]:
         out = []
@@ -277,6 +279,11 @@ class FritzBox:
 
     async def set_guest_ssid(self, ssid: str, token: Optional[str] = None) -> None:
         await self.call(WLAN.format(self.guest_index), "SetSSID", token=token, NewSSID=ssid)
+
+    async def set_guest_hidden(self, hidden: bool, token: Optional[str] = None) -> None:
+        """Gast-WLAN unsichtbar: Der Name erscheint in keiner WLAN-Liste, verbinden geht per QR-Code."""
+        await self.call(WLAN.format(self.guest_index), "SetBeaconAdvertisement", token=token,
+                        NewBeaconAdvertisementEnabled=int(not hidden))
 
     async def set_blocked(self, ip: str, blocked: bool, token: Optional[str] = None) -> None:
         await self.call("urn:dslforum-org:service:X_AVM-DE_HostFilter:1", "DisallowWANAccessByIP", token=token,
