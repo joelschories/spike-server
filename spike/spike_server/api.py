@@ -328,6 +328,63 @@ def build_app(state) -> web.Application:
         await apply_settings({cid: False})
         return await snapshot_response()
 
+    @routes.post("/api/checks/{id}/dismiss")
+    async def dismiss_check(request):
+        """Empfehlung verwerfen: zählt nicht mehr in den Score, bis sich die Lage ändert (anderer Titel)."""
+        cid = request.match_info["id"]
+        data = await body(request)
+        dismissed = store.data.setdefault("dismissed", {})
+        if data.get("dismissed", True):
+            snap = await state.snapshot()
+            check = next((c for c in snap["checks"] if c["id"] == cid), None)
+            if check is None:
+                raise ValueError("Diese Empfehlung gibt es nicht mehr.")
+            dismissed[cid] = check["title"]
+            store.log("info", f"Empfehlung verworfen: {check['title']}")
+        else:
+            dismissed.pop(cid, None)
+        store.save()
+        return await snapshot_response()
+
+    # --- Wächter -------------------------------------------------------------------
+    @routes.post("/api/watch/settings")
+    async def watch_settings(request):
+        state.watcher.settings(await body(request))
+        return await snapshot_response()
+
+    @routes.post("/api/watch/alerts/{aid}")
+    async def watch_alert(request):
+        aid = request.match_info["aid"]
+        action = (await body(request)).get("action")
+        alert = state.watcher.find(aid)
+        if alert is None:
+            raise ValueError("Diesen Hinweis gibt es nicht mehr.")
+        if action == "dismiss":
+            state.watcher.resolve(aid, "dismissed")
+        elif action == "trust":
+            state.watcher.resolve(aid, "trusted")
+            store.log("deviceTrusted", f"Wächter: „{alert['device']}“ ist in Ordnung")
+        elif action == "block":
+            snap = await state.snapshot()
+            dev = next((d for d in snap["devices"] if d["id"] == alert["mac"]), None)
+            if dev is None or not dev.get("ip"):
+                raise ValueError("Das Gerät ist gerade nicht im Netz. Sperren geht, sobald es wieder verbunden ist.")
+
+            async def block(token):
+                if state.demo:
+                    state.demo.set_device(dev["id"], None, True, None)
+                else:
+                    await state.fritz.set_blocked(dev["ip"], True, token)
+
+            def done():
+                state.overrides.set(f"block:{dev['id']}", True)
+                state.watcher.resolve(aid, "blocked")
+                store.log("deviceBlocked", f"Wächter: „{dev['name']}“ vom Internet getrennt")
+            await state.router_action(f"„{dev['name']}“ sperren", block, done)
+        else:
+            raise ValueError("Unbekannte Aktion.")
+        return await snapshot_response()
+
     # --- Schutzfilter ------------------------------------------------------------
     @routes.post("/api/filter")
     async def set_filter(request):

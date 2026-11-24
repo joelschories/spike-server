@@ -33,6 +33,16 @@ Blocklisten: [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists), 
 Aktivieren: In der FRITZ!Box unter Internet › Zugangsdaten › DNS-Server die IP-Adresse von Spike als
 bevorzugten und alternativen DNSv4-Server eintragen. Ohne den Filter: Umgebungsvariable `SPIKE_DNS=0`.
 
+## Spike-Wächter
+
+Der Wächter wertet die DNS-Anfragen pro Gerät aus und lernt in den ersten 72 Stunden, was für jedes Gerät normal ist.
+Danach meldet er Abweichungen. Er erkennt zufällig erzeugte Domains, wie sie Schadsoftware nutzt, und wiederholte
+Aufrufe bekannter Betrugs- und Schadsoftware-Seiten. Außerdem fallen ihm ungewöhnlich viele Anfragen auf und neue
+Ziele bei Geräten mit festem Verhalten. Alle Daten bleiben auf dem Spike-Server (`watch.json`).
+
+Damit Spike jedes Gerät einzeln sieht, verteilt die FRITZ!Box Spike als DNS-Server: Heimnetz › Netzwerk ›
+Netzwerkeinstellungen › IPv4-Einstellungen › „Lokaler DNS-Server“.
+
 ## Sicherheit
 
 - TLS mit eigenem Zertifikat; die App pinnt den Fingerabdruck beim ersten Kontakt.

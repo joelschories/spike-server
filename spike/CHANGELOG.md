@@ -1,3 +1,12 @@
+## 0.4.0
+- Spike-Wächter: lernt aus den DNS-Anfragen das normale Verhalten jedes Geräts (lokal, ohne Cloud) und meldet
+  Hinweise auf Schadsoftware (zufällig erzeugte Domains), wiederholte Aufrufe gefährlicher Seiten,
+  ungewöhnlich viele Anfragen und neue Ziele bei Kameras, Steckdosen, Lampen und Saugrobotern.
+- Hinweise lassen sich als „in Ordnung“ markieren (Spike lernt dazu), ausblenden oder das Gerät direkt sperren.
+  Optional sperrt Spike bei Hinweisen auf Schadsoftware automatisch.
+- Systemzustand: verschlüsselte Namensauflösung, Router-Verbindung und Blocklisten werden laufend geprüft.
+- Empfehlungen lassen sich verwerfen und zählen dann nicht mehr in den Score, bis sich die Lage ändert.
+
 ## 0.3.2
 - Eigenes Icon und Logo in Home Assistant.
 - Gast-WLAN direkt aus der App einrichten (Name, sicheres Passwort) und unsichtbar schalten.

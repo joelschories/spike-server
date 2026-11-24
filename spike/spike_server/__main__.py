@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import collections
 import os
 import signal
@@ -24,6 +25,8 @@ from .pairing import Pairing
 from .snapshot import Overrides, empty_snapshot, from_fritzbox
 from .store import Store
 from .tls import ensure_certificate, server_context
+from .snapshot import compute_score
+from .watch import Watcher
 
 
 class LogTail:
@@ -66,6 +69,9 @@ class State:
         self.ipv6 = lan_ipv6()
         self.log = LOG
         self.started = time.time()
+        self.watcher = Watcher(self.config.data_dir, self.store.log)
+        self.dns.observer = self.watcher.observe
+        self.watcher.quarantine = self._auto_quarantine
         self._snap = None
         self._snap_time = 0.0
         self._snap_lock = asyncio.Lock()
@@ -148,15 +154,73 @@ class State:
         self._snap = None
 
     async def watch(self) -> None:
-        """Auch ohne geöffnete App regelmäßig nachsehen, damit neue Geräte sofort im Protokoll landen."""
+        """Auch ohne geöffnete App regelmäßig nachsehen: neue Geräte, Gesundheit von Spike und Router."""
+        tick = 0
         while True:
             await asyncio.sleep(30)
+            tick += 1
+            router_ok, router_detail = True, ""
             try:
                 await self.snapshot()
             except Exception as exc:
+                router_ok, router_detail = False, str(exc)
                 print(f"[spike] Hintergrundprüfung fehlgeschlagen: {exc}", flush=True)
+            if tick % 2 == 1:
+                await self._check_health(router_ok, router_detail)
+            self.watcher.save_if_needed()
+
+    async def _check_health(self, router_ok: bool, router_detail: str) -> None:
+        health = [await self.dns.health()]
+        if self.fritz or self.demo:
+            health.append({"id": "router", "title": "Verbindung zum Router", "ok": router_ok,
+                           "detail": "Spike erreicht deine FRITZ!Box." if router_ok else router_detail})
+        if self.dns.available:
+            updated = self.dns.lists_updated
+            fresh = False
+            if updated:
+                age = time.time() - datetime.fromisoformat(updated.replace("Z", "+00:00")).timestamp()
+                fresh = age < 2 * 86400
+            health.append({"id": "lists", "title": "Blocklisten", "ok": fresh,
+                           "detail": "Aktuell, werden alle 6 Stunden erneuert." if fresh
+                           else "Konnten länger nicht aktualisiert werden. Spike versucht es weiter."})
+        self.watcher.health = health
+
+    def _auto_quarantine(self, alert: dict) -> None:
+        """Kritischer Fund und automatische Quarantäne eingeschaltet: Gerät sofort vom Internet trennen."""
+        async def go():
+            snap = self._snap or {}
+            dev = next((d for d in snap.get("devices", []) if d["id"] == alert["mac"]), None)
+            if not dev or not dev.get("ip"):
+                return
+            try:
+                if self.demo:
+                    self.demo.set_device(dev["id"], None, True, None)
+                elif self.fritz:
+                    await self.fritz.set_blocked(dev["ip"], True)
+                self.overrides.set(f"block:{dev['id']}", True)
+                alert["status"] = "blocked"
+                self.store.log("deviceBlocked", f"Wächter hat „{dev['name']}“ vorsorglich vom Internet getrennt")
+                self.invalidate()
+            except Exception as exc:
+                alert["detail"] += " Automatisches Sperren war nicht möglich: " + str(exc)
+            self.watcher.save()
+        asyncio.ensure_future(go())
 
     async def _build_snapshot(self) -> dict:
+        snap = await self._router_snapshot()
+        # Verworfene Empfehlungen zählen nicht mehr in den Score (gilt, bis sich die Lage ändert)
+        dismissed = self.store.data.get("dismissed", {})
+        for c in snap["checks"]:
+            c["dismissed"] = dismissed.get(c["id"]) == c["title"] and c["status"] in ("warning", "critical", "info")
+        # Wächter
+        self.watcher.update_devices(snap["devices"], self.config.router.host, self.ip)
+        names = {d["ip"]: d["name"] for d in snap["devices"] if d.get("ip")}
+        snap["watch"] = self.watcher.snapshot(self.dns.clients_in_use(), dict(self.dns.client_queries), names)
+        if snap.get("routerConnected", True):
+            snap["score"] = max(0, compute_score(snap["checks"], snap["devices"]) - self.watcher.penalty())
+        return snap
+
+    async def _router_snapshot(self) -> dict:
         if self.demo:
             snap = self.demo.snapshot()
             if self.dns.available:

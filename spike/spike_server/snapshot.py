@@ -34,6 +34,8 @@ def guess_kind(name: str) -> str:
 def compute_score(checks: list, devices: list) -> int:
     score = 100
     for c in checks:
+        if c.get("dismissed"):
+            continue
         if c["status"] == "critical":
             score -= 25
         elif c["status"] == "warning":

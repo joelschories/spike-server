@@ -204,6 +204,8 @@ class DnsFilter:
         self.cache: Dict[Tuple[str, int], Tuple[bytes, float]] = {}
         self.available = False
         self.bound = ""
+        # Wird vom Spike-Wächter gesetzt: bekommt jede Anfrage (Gerät, Name, Antwortcode, Kategorie)
+        self.observer = None
         self.problem: Optional[str] = None
         self.client: Optional[httpx.AsyncClient] = None
         self._transports = []
@@ -412,6 +414,7 @@ class DnsFilter:
         category = self.verdict(name)
         if category:
             self._blocked(client, name, category)
+            self._observe(client, name, 0, category)
             return blocked_response(query, qtype, qend)
 
         target = self.safesearch_target(name)
@@ -428,17 +431,42 @@ class DnsFilter:
         key = (name, qtype)
         cached = self.cache.get(key)
         if cached and cached[1] > time.time():
+            self._observe(client, name, cached[0][3] & 0x0F, None)
             return query[:2] + cached[0][2:]
         try:
             answer = await self.forward(query)
         except Exception:
             return servfail(query, qend)
         rcode = answer[3] & 0x0F
+        self._observe(client, name, rcode, None)
         ttl = max(10, min(3600, min_ttl(answer))) if rcode == 0 else 30
         if len(self.cache) > 20000:
             self.cache.clear()
         self.cache[key] = (answer, time.time() + ttl)
         return answer
+
+    def _observe(self, client: str, name: str, rcode: int, category: Optional[str]) -> None:
+        if self.observer:
+            try:
+                self.observer(client, name, rcode, category)
+            except Exception as exc:
+                print(f"[spike] Wächter-Fehler: {exc}", flush=True)
+
+    async def health(self) -> dict:
+        """Prüft, ob die verschlüsselte Weiterleitung antwortet (für den Wächter)."""
+        if not self.available:
+            return {"id": "dns", "title": "Namensauflösung", "ok": False,
+                    "detail": self.problem or "Der Schutzfilter läuft nicht."}
+        start = time.time()
+        try:
+            answer = await self.forward(build_query("example.com", T_A))
+            ok = (answer[3] & 0x0F) == 0
+        except Exception:
+            ok = False
+        ms = int((time.time() - start) * 1000)
+        name = {"quad9": "Quad9", "cloudflare": "Cloudflare", "google": "Google"}.get(self.settings["upstream"], "DNS")
+        return {"id": "dns", "title": "Verschlüsselte Namensauflösung", "ok": ok,
+                "detail": f"{name} antwortet in {ms} ms." if ok else "Keine Antwort vom DNS-Anbieter. Spike versucht es über Ausweichserver."}
 
     # --- Statistik ---------------------------------------------------------------
     def _load_stats(self) -> None:
