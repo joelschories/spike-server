@@ -215,7 +215,10 @@ class State:
         # Wächter
         self.watcher.update_devices(snap["devices"], self.config.router.host, self.ip)
         names = {d["ip"]: d["name"] for d in snap["devices"] if d.get("ip")}
-        snap["watch"] = self.watcher.snapshot(self.dns.clients_in_use(), dict(self.dns.client_queries), names)
+        lan_dns = snap.get("lanDns")
+        local_dns = None if lan_dns is None else self.ip in lan_dns
+        snap["watch"] = self.watcher.snapshot(self.dns.clients_in_use(), dict(self.dns.client_queries), names,
+                                              local_dns)
         if snap.get("routerConnected", True):
             snap["score"] = max(0, compute_score(snap["checks"], snap["devices"]) - self.watcher.penalty())
         return snap

@@ -29,19 +29,43 @@ import httpx
 
 LIST_BASE = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/"
 
-# Kategorien mit Blockliste. Reihenfolge = Anzeige in der App.
+# Kategorien. Reihenfolge = Anzeige in der App.
+# "lists": HaGeZi-Listen (normal), "strict": Listen im strengen Modus, "builtin": fest eingebaute Adressen.
 CATEGORIES = {
-    "ads": {"title": "Werbung & Tracker", "list": "multi", "strict": "pro", "default": True,
-            "detail": "Werbebanner, Tracker, Telemetrie und Datensammler."},
-    "threats": {"title": "Betrug & Schadsoftware", "list": "tif.mini", "default": True,
-                "detail": "Phishing, Abzocke, Schadsoftware und Krypto-Miner."},
-    "gambling": {"title": "Glücksspiel", "list": "gambling.medium", "default": False,
+    "ads": {"title": "Werbung & Tracker", "lists": ["pro"], "strict": ["pro.plus"], "default": True,
+            "builtin": ["adservice.google.com", "adservice.google.de", "googletagservices.com"],
+            "detail": "Werbebanner, Pop-ups, Tracker, Telemetrie und Datensammler."},
+    "threats": {"title": "Betrug & Schadsoftware", "lists": ["tif.medium"], "default": True,
+                "detail": "Phishing, Fake-Shops, Abzocke, Schadsoftware und Krypto-Miner."},
+    "bypass": {"title": "Umgehung verhindern", "lists": ["doh-vpn-proxy-bypass"], "default": True, "nxdomain": True,
+               "builtin": ["use-application-dns.net", "mask.icloud.com", "mask-h2.icloud.com",
+                           "mask-api.icloud.com", "mask-t.apple-dns.net"],
+               # Fernzugänge fürs eigene Heimnetz nicht kaputt machen
+               "except": ["tailscale.com", "tailscale.io", "ts.net", "zerotier.com", "nabu.casa", "wireguard.com",
+                          "myfritz.net", "fritz.box", "plex.tv", "remote.it"],
+               "detail": "Sperrt fremde DNS-Dienste, Proxys und iCloud Privat-Relay im Heimnetz, damit Browser und "
+                         "Apps nicht am Filter vorbei surfen. Unterwegs bleibt Privat-Relay aktiv."},
+    "native": {"title": "Hersteller-Tracking", "default": False,
+               "lists": ["native.samsung", "native.lgwebos", "native.amazon", "native.tiktok", "native.winoffice",
+                         "native.xiaomi", "native.huawei", "native.roku", "native.vivo", "native.oppo-realme"],
+               "detail": "Nutzungsdaten, die Fernseher, Handys, Windows und smarte Lautsprecher an ihre Hersteller senden."},
+    "social": {"title": "Soziale Netzwerke", "default": False,
+               "builtin": ["facebook.com", "facebook.net", "fbcdn.net", "fb.com", "fb.me", "messenger.com",
+                           "instagram.com", "cdninstagram.com", "ig.me", "threads.net", "threads.com",
+                           "tiktok.com", "tiktokv.com", "tiktokcdn.com", "tiktokcdn-eu.com", "tiktokv.eu",
+                           "byteoversea.com", "ibytedtos.com", "musical.ly", "snapchat.com", "snap.com",
+                           "sc-cdn.net", "snapkit.com", "x.com", "twitter.com", "twimg.com", "t.co",
+                           "reddit.com", "redd.it", "redditmedia.com", "redditstatic.com", "pinterest.com",
+                           "pinterest.de", "pinimg.com", "tumblr.com", "bsky.app", "bsky.social", "vk.com",
+                           "likee.video", "lemon8-app.com", "bereal.com", "triller.co"],
+               "detail": "Instagram, TikTok, Facebook, Snapchat, X, Reddit, Pinterest und weitere."},
+    "gambling": {"title": "Glücksspiel", "lists": ["gambling.medium"], "default": False,
                  "detail": "Online-Casinos, Sportwetten und Lotterien."},
-    "adult": {"title": "Erwachseneninhalte", "list": "nsfw", "default": False,
+    "adult": {"title": "Erwachseneninhalte", "lists": ["nsfw"], "default": False,
               "detail": "Pornografische und andere nicht jugendfreie Seiten."},
 }
 CATEGORY_LABEL = {"ads": "Werbung", "threats": "Gefahr", "gambling": "Glücksspiel", "adult": "Jugendschutz",
-                  "custom": "Eigene Liste"}
+                  "bypass": "Umgehung", "native": "Hersteller", "social": "Soziale Netzwerke", "custom": "Eigene Liste"}
 
 UPSTREAMS = {
     "quad9": ["https://9.9.9.9/dns-query", "https://149.112.112.112/dns-query"],
@@ -272,31 +296,52 @@ class DnsFilter:
         self.save_settings()
 
     # --- Blocklisten -----------------------------------------------------------
-    def _list_names(self) -> Dict[str, str]:
+    def _list_names(self) -> Dict[str, List[str]]:
         names = {}
         for key, cat in CATEGORIES.items():
             if self.settings["categories"].get(key):
-                names[key] = cat["strict"] if self.settings["strict"] and "strict" in cat else cat["list"]
+                names[key] = cat["strict"] if self.settings["strict"] and "strict" in cat else cat.get("lists", [])
         return names
 
     async def load_lists(self, download: bool = False) -> None:
         wanted = self._list_names()
         loaded: Dict[str, Set[str]] = {}
-        for key, name in wanted.items():
-            path = self.dir / f"{name}.txt"
-            fresh = path.exists() and time.time() - path.stat().st_mtime < 20 * 3600
-            if (download or not path.exists()) and not fresh:
-                await self._download(name, path)
-            if path.exists():
-                loaded[key] = await asyncio.get_running_loop().run_in_executor(None, self._read_list, path)
+        loop = asyncio.get_running_loop()
+        for key, names in wanted.items():
+            domains: Set[str] = set(CATEGORIES[key].get("builtin", []))
+            for name in names:
+                path = self.dir / f"{name}.txt"
+                fresh = path.exists() and time.time() - path.stat().st_mtime < 20 * 3600
+                if (download or not path.exists()) and not fresh:
+                    await self._download(name, path)
+                if path.exists():
+                    domains |= await loop.run_in_executor(None, self._read_list, path)
+            excepted = tuple(CATEGORIES[key].get("except", []))
+            if excepted:
+                dotted = tuple("." + e for e in excepted)
+                domains = {d for d in domains if d not in excepted and not d.endswith(dotted)}
+            if domains:
+                loaded[key] = domains
         self.lists = loaded
         self.list_sizes = {k: len(v) for k, v in loaded.items()}
-        stamps = [(self.dir / f"{n}.txt").stat().st_mtime for n in wanted.values() if (self.dir / f"{n}.txt").exists()]
+        files = [self.dir / f"{n}.txt" for ns in wanted.values() for n in ns]
+        stamps = [f.stat().st_mtime for f in files if f.exists()]
         if stamps:
             self.lists_updated = datetime.fromtimestamp(min(stamps), timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         self.cache.clear()
         total = sum(self.list_sizes.values())
-        print(f"[spike] Schutzfilter: {total:,} Einträge aus {len(loaded)} Listen geladen".replace(",", "."), flush=True)
+        print(f"[spike] Schutzfilter: {total:,} Einträge in {len(loaded)} Kategorien geladen".replace(",", "."), flush=True)
+        self._cleanup_files(wanted)
+
+    def _cleanup_files(self, wanted: Dict[str, List[str]]) -> None:
+        """Nicht mehr benötigte Listen löschen (z. B. nach dem Wechsel auf größere Listen)."""
+        keep = {f"{n}.txt" for ns in wanted.values() for n in ns}
+        for f in self.dir.glob("*.txt"):
+            if f.name not in keep:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
 
     async def _download(self, name: str, path: Path) -> None:
         url = f"{LIST_BASE}{name}-onlydomains.txt"
@@ -344,7 +389,9 @@ class DnsFilter:
             return None
         if block and any(s in block for s in suffixes):
             return "custom"
-        for key, domains in self.lists.items():
+        # Gefahren zuerst, damit der Wächter sie als solche erkennt
+        for key in sorted(self.lists, key=lambda k: k != "threats"):
+            domains = self.lists[key]
             for s in suffixes:
                 if s in domains:
                     return key
@@ -415,6 +462,9 @@ class DnsFilter:
         if category:
             self._blocked(client, name, category)
             self._observe(client, name, 0, category)
+            if CATEGORIES.get(category, {}).get("nxdomain"):
+                # Browser und iCloud Privat-Relay erkennen „gibt es nicht“ als Zeichen, den Filter zu respektieren
+                return _response(query, qend, 3)
             return blocked_response(query, qtype, qend)
 
         target = self.safesearch_target(name)

@@ -25,6 +25,8 @@ LEARN_SECONDS = float(os.environ.get("SPIKE_WATCH_LEARN_HOURS", "72")) * 3600
 STEADY_KINDS = {"camera", "plug", "light", "vacuum"}
 SEVERITY_PENALTY = {"critical": 20, "warning": 8, "info": 0}
 VOWELS = set("aeiouy")
+NETWORK_KEY = "network"
+NETWORK_DEVICE = {"mac": None, "name": "Heimnetz (über die FRITZ!Box)", "kind": "router"}
 
 
 def now_iso(ts: Optional[float] = None) -> str:
@@ -107,10 +109,13 @@ class Watcher:
 
     # --- Beobachten ---------------------------------------------------------------
     def observe(self, ip: str, name: str, rcode: int, category: Optional[str]) -> None:
-        if not self.enabled or ip.startswith("127.") or ip in (self.self_ip, self.router_ip, "::1"):
+        if not self.enabled or ip.startswith("127.") or ip in (self.self_ip, "::1"):
             return
-        device = self.devices.get(ip)
-        key = device["mac"] if device else ip
+        # Fragt die FRITZ!Box stellvertretend für alle Geräte, sieht Spike nur das Netz als Ganzes.
+        # Gefährliche Seiten und Schadsoftware-Muster erkennt der Wächter trotzdem.
+        network = ip == self.router_ip
+        device = NETWORK_DEVICE if network else self.devices.get(ip)
+        key = NETWORK_KEY if network else (device["mac"] if device else ip)
         now = time.time()
         if self.data["since"] is None:
             self.data["since"] = now
@@ -162,7 +167,7 @@ class Watcher:
                             "existieren. Genau so suchen Schadprogramme ihre Steuerserver.", sorted(distinct)[:8])
 
         # 3. Ungewöhnlich viele Anfragen
-        if learned and p["hours"] >= 24:
+        if learned and not network and p["hours"] >= 24:
             std = math.sqrt(max(p["var"], 1.0))
             limit = max(200, p["mean"] * 4, p["mean"] + 6 * std)
             if p["count"] > limit:
@@ -219,7 +224,9 @@ class Watcher:
         return a
 
     # --- Für die App ---------------------------------------------------------------
-    def snapshot(self, dns_clients: List[str], client_queries: Dict[str, int], names: Dict[str, str]) -> dict:
+    def snapshot(self, dns_clients: List[str], client_queries: Dict[str, int], names: Dict[str, str],
+                 local_dns: Optional[bool] = None) -> dict:
+        """local_dns: verteilt die FRITZ!Box Spike als DNS-Server an die Geräte? (None = unbekannt)"""
         now = time.time()
         per_device = [c for c in dns_clients if c not in (self.router_ip, self.self_ip) and not c.startswith("127.")]
         if not self.enabled:
@@ -231,7 +238,8 @@ class Watcher:
         else:
             status = "active"
         open_alerts = [a for a in self.data["alerts"] if a["status"] == "open"]
-        learned = sum(1 for p in self.data["profiles"].values() if now - p["first"] > LEARN_SECONDS)
+        profiles = {k: p for k, p in self.data["profiles"].items() if k != NETWORK_KEY}
+        learned = sum(1 for p in profiles.values() if now - p["first"] > LEARN_SECONDS)
         top = sorted(((names.get(ip, ip), n) for ip, n in client_queries.items()
                       if ip not in (self.router_ip, self.self_ip) and not ip.startswith("127.")),
                      key=lambda x: -x[1])[:5]
@@ -240,7 +248,9 @@ class Watcher:
             "status": status,
             "autoQuarantine": bool(self.data["autoQuarantine"]),
             "learningUntil": now_iso(self.data["since"] + LEARN_SECONDS) if self.data["since"] else None,
-            "devicesWatched": len(self.data["profiles"]),
+            "devicesWatched": len(profiles),
+            "localDns": local_dns,
+            "networkWatched": NETWORK_KEY in self.data["profiles"],
             "devicesLearned": learned,
             "alerts": [{"id": a["id"], "device": a["device"], "deviceId": a["mac"], "kind": a["kind"],
                         "severity": a["severity"], "title": a["title"], "detail": a["detail"],

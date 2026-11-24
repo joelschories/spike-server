@@ -208,6 +208,32 @@ def build_app(state) -> web.Application:
             store.log("deviceTrusted", f"{len(ids)} Geräte als vertraut markiert" if len(ids) > 1 else "Gerät als vertraut markiert")
         return await snapshot_response()
 
+    @routes.post("/api/devices/block")
+    async def block_many(request):
+        """Mehrere Geräte auf einmal vom Internet trennen (eine Bestätigung an der FRITZ!Box für alle)."""
+        data = await body(request)
+        ids = {str(i) for i in data.get("ids", [])}
+        snap = await state.snapshot()
+        devs = [d for d in snap["devices"] if d["id"] in ids and (d.get("ip") or state.demo)]
+        if not devs:
+            raise ValueError("Diese Geräte haben gerade keine IP-Adresse. Sperren geht, sobald sie wieder verbunden sind.")
+
+        async def block(token):
+            for d in devs:
+                if state.demo:
+                    state.demo.set_device(d["id"], None, True, None)
+                else:
+                    await state.fritz.set_blocked(d["ip"], True, token)
+
+        def done():
+            for d in devs:
+                state.overrides.set(f"block:{d['id']}", True)
+            store.log("deviceBlocked", f"Internet für {len(devs)} Geräte gesperrt" if len(devs) > 1
+                      else f"Internet für „{devs[0]['name']}“ gesperrt")
+        await state.router_action(f"{len(devs)} Geräte sperren" if len(devs) > 1 else f"„{devs[0]['name']}“ sperren",
+                                  block, done)
+        return await snapshot_response()
+
     @routes.post("/api/devices/{id}")
     async def device(request):
         data = await body(request)

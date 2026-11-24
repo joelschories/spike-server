@@ -31,6 +31,7 @@ UPNP = "urn:dslforum-org:service:X_AVM-DE_UPnP:1"
 WANIP = "urn:dslforum-org:service:WANIPConnection:1"
 WANPPP = "urn:dslforum-org:service:WANPPPConnection:1"
 WANCOMMON = "urn:dslforum-org:service:WANCommonInterfaceConfig:1"
+LANHOST = "urn:dslforum-org:service:LANHostConfigManagement:1"
 
 
 def _local(tag: str) -> str:
@@ -201,6 +202,13 @@ class FritzBox:
         if res is None:
             return None
         return {"enabled": res.get("NewEnable") == "1", "media": res.get("NewUPnPMediaServer") == "1"}
+
+    async def lan_dns_servers(self) -> Optional[List[str]]:
+        """DNS-Server, die die FRITZ!Box per DHCP an die Geräte verteilt („Lokaler DNS-Server“)."""
+        res = await self.try_call(LANHOST, "GetDNSServers")
+        if res is None:
+            return None
+        return [s.strip() for s in (res.get("NewDNSServers") or "").split(",") if s.strip()]
 
     def wan_service(self) -> str:
         return WANIP if self.has(WANIP) else WANPPP

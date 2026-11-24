@@ -1,3 +1,14 @@
+## 0.5.0
+- Schutzfilter deutlich stärker: HaGeZi Pro statt Multi (strenger Modus: Pro++, blockiert auch Google-Werbelinks)
+  und Threat Intelligence Medium statt Mini. Zusammen rund 500.000 Einträge.
+- Neu: „Umgehung verhindern“ (standardmäßig an). Sperrt fremde DNS-over-HTTPS-Dienste, Proxys und iCloud Privat-Relay
+  im Heimnetz, damit Browser und Apps nicht am Filter vorbei surfen. Fernzugänge wie Tailscale bleiben erreichbar.
+- Neu: Kategorien „Hersteller-Tracking“ (Smart-TVs, Handys, Windows, Alexa) und „Soziale Netzwerke“.
+- Wächter arbeitet sofort: Auch wenn nur die FRITZ!Box bei Spike nachfragt, meldet er gefährliche Seiten und
+  Schadsoftware-Muster für das ganze Netz. Für die Sicht pro Gerät erkennt Spike jetzt selbst, ob die FRITZ!Box
+  Spike als „Lokalen DNS-Server“ verteilt.
+- Mehrere unbekannte Geräte auf einmal sperren (eine Bestätigung an der FRITZ!Box für alle).
+
 ## 0.4.0
 - Spike-Wächter: lernt aus den DNS-Anfragen das normale Verhalten jedes Geräts (lokal, ohne Cloud) und meldet
   Hinweise auf Schadsoftware (zufällig erzeugte Domains), wiederholte Aufrufe gefährlicher Seiten,
