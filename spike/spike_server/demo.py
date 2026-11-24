@@ -31,7 +31,7 @@ class Demo:
             dev("3C:22:FB:10:01:01", "Annas iPhone", "phone", "192.168.178.21", "Apple", "wifi5"),
             dev("3C:22:FB:10:01:02", "MacBook Air", "laptop", "192.168.178.22", "Apple", "wifi6"),
             dev("A4:77:33:20:02:01", "Wohnzimmer-TV", "tv", "192.168.178.30", "LG Electronics", "lan"),
-            dev("2C:CF:67:20:02:03", "Spike-Server", "server", "192.168.178.37", "Raspberry Pi", "lan"),
+            dev("2C:CF:67:20:02:03", "Spike-Server", "server", "192.168.178.50", "Raspberry Pi", "lan"),
             dev("C8:2B:96:20:02:04", "Steckdose Flur", "plug", "192.168.178.40", "Espressif", "wifi24"),
             dev("D2:41:7A:9E:03:01", "Galaxy-A52", "phone", "192.168.178.57", None, "wifi24", trusted=False, first=6),
             dev("6A:11:0C:44:10:01", "Lenas iPhone", "phone", "192.168.179.20", "Apple", "wifi5", trusted=False, guest=True, first=day * 12),
