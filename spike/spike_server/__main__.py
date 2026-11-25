@@ -10,7 +10,7 @@ import sys
 import time
 import traceback
 import uuid
-from typing import Awaitable, Callable, Optional
+from typing import Dict, Awaitable, Callable, Optional
 
 from aiohttp import web
 
@@ -70,6 +70,11 @@ class State:
         self.ipv6 = lan_ipv6()
         self.log = LOG
         self.started = time.time()
+        # IP-Adressen der Geräte, auf denen die Spike-App läuft (sie sperrt der strenge Modus nie)
+        self.app_ips: set = set()
+        self.enforce_lock = asyncio.Lock()
+        self.enforce_retry: Dict[str, float] = {}
+        self.security_problem: Optional[str] = None
         self.watcher = Watcher(self.config.data_dir, self.store.log)
         self.dns.observer = self.watcher.observe
         self.watcher.quarantine = self._auto_quarantine
@@ -158,7 +163,7 @@ class State:
         """Auch ohne geöffnete App regelmäßig nachsehen: neue Geräte, Gesundheit von Spike und Router."""
         tick = 0
         while True:
-            await asyncio.sleep(30)
+            await asyncio.sleep(10 if self.store.strict_mode else 30)
             tick += 1
             router_ok, router_detail = True, ""
             try:
@@ -239,9 +244,79 @@ class State:
         local_dns = None if lan_dns is None else self.ip in lan_dns
         snap["watch"] = self.watcher.snapshot(self.dns.clients_in_use(), dict(self.dns.client_queries), names,
                                               local_dns)
+        # Gerätezulassung: Sperr-Wünsche für Offline-Geräte und strenger Modus
+        for d in snap["devices"]:
+            meta = self.store.meta(d["id"])
+            d["blockPending"] = bool(meta["wantBlocked"]) if meta.get("wantBlocked") is not None else None
+            d["autoBlocked"] = bool(meta.get("autoBlocked")) and not d.get("isTrusted")
+        snap["security"] = {"strictMode": self.store.strict_mode, "problem": self.security_problem}
         if snap.get("routerConnected", True):
             snap["score"] = max(0, compute_score(snap["checks"], snap["devices"]) - self.watcher.penalty())
+        if not self.enforce_lock.locked():
+            asyncio.ensure_future(self.enforce(snap))
         return snap
+
+    async def set_block(self, device: dict, blocked: bool) -> bool:
+        """Sperrt oder entsperrt ein Gerät ohne Rückfrage. False, wenn die FRITZ!Box das nicht zulässt."""
+        try:
+            if self.demo:
+                self.demo.set_device(device["id"], None, blocked, None)
+            elif self.fritz and device.get("ip"):
+                await self.fritz.set_blocked(device["ip"], blocked)
+            else:
+                return False
+            self.overrides.set(f"block:{device['id']}", blocked)
+            self.security_problem = None
+            return True
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            if str(code) in ("866", "867", "868"):
+                self.security_problem = ("Deine FRITZ!Box verlangt für jede Sperre eine Bestätigung direkt am Gerät. "
+                                         "Neue Geräte kann Spike deshalb nicht von selbst sperren, sondern nur, wenn du "
+                                         "es in der App bestätigst.")
+            else:
+                self.security_problem = f"Spike konnte ein Gerät nicht sperren: {exc}"
+            print(f"[spike] Sperren fehlgeschlagen ({device.get('name')}): {exc}", flush=True)
+            return False
+
+    async def enforce(self, snap: dict) -> None:
+        """Wendet aufgeschobene Sperren an und sperrt im strengen Modus neue Geräte, bis du sie freigibst."""
+        async with self.enforce_lock:
+            now = time.time()
+            exempt = {self.ip, self.config.router.host} | self.app_ips
+            changed = False
+            for d in snap.get("devices", []):
+                mac, ip = d["id"], d.get("ip")
+                if d.get("isGuest") or not d.get("isOnline") or not (ip or self.demo):
+                    continue
+                if self.enforce_retry.get(mac, 0) > now:
+                    continue
+                meta = self.store.meta(mac)
+                want = meta.get("wantBlocked")
+                if want is not None:
+                    if bool(d.get("isBlocked")) == want or await self.set_block(d, want):
+                        self.store.update_device(mac, wantBlocked=None)
+                        if bool(d.get("isBlocked")) != want:
+                            self.store.log("deviceBlocked" if want else "deviceTrusted",
+                                           f"Internet für „{d['name']}“ gesperrt" if want else f"„{d['name']}“ wieder freigegeben")
+                        changed = True
+                    else:
+                        self.enforce_retry[mac] = now + 300
+                    continue
+                if not self.store.strict_mode or d.get("isTrusted") or meta.get("trusted") or d.get("isBlocked") or meta.get("autoBlocked"):
+                    continue
+                if ip in exempt:
+                    self.store.update_device(mac, trusted=True)     # Gerät mit der Spike-App: automatisch vertraut
+                    changed = True
+                    continue
+                if await self.set_block(d, True):
+                    self.store.update_device(mac, autoBlocked=True)
+                    self.store.log("newDevice", f"Neues Gerät „{d['name']}“ wartet auf deine Freigabe")
+                    changed = True
+                else:
+                    self.enforce_retry[mac] = now + 300
+            if changed:
+                self.invalidate()
 
     async def _lan_dns(self):
         """Welchen DNS-Server verteilt der Router per DHCP? Alle 5 Minuten neu gefragt."""

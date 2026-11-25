@@ -23,6 +23,9 @@ def build_app(state) -> web.Application:
         public = request.path in ("/", "/api/info", "/api/pair") or request.path.startswith("/api/pair/")
         if not public and not authorized(request):
             return web.json_response({"error": "Dieses Gerät ist nicht mit Spike verbunden."}, status=401)
+        if not public and request.remote:
+            remote = request.remote[7:] if request.remote.startswith("::ffff:") else request.remote
+            state.app_ips.add(remote)
         try:
             return await handler(request)
         except web.HTTPException:
@@ -204,8 +207,60 @@ def build_app(state) -> web.Application:
             if state.demo:
                 state.demo.set_device(mac, trusted, None, None)
             store.update_device(mac, trusted=trusted)
+        if trusted:
+            await release_auto_blocked(ids)
         if ids:
             store.log("deviceTrusted", f"{len(ids)} Geräte als vertraut markiert" if len(ids) > 1 else "Gerät als vertraut markiert")
+        return await snapshot_response()
+
+    async def release_auto_blocked(ids):
+        """Vom strengen Modus gesperrte Geräte nach der Freigabe wieder ins Internet lassen."""
+        held = [i for i in ids if store.meta(i).get("autoBlocked")]
+        if not held:
+            return
+        snap = await state.snapshot()
+        devs = [d for d in snap["devices"] if d["id"] in held]
+        online = [d for d in devs if d.get("ip") or state.demo]
+
+        async def unblock(token):
+            for d in online:
+                if state.demo:
+                    state.demo.set_device(d["id"], None, False, None)
+                else:
+                    await state.fritz.set_blocked(d["ip"], False, token)
+
+        def done():
+            for d in online:
+                state.overrides.set(f"block:{d['id']}", False)
+            for i in held:
+                offline = not any(d["id"] == i for d in online)
+                store.update_device(i, autoBlocked=None, wantBlocked=False if offline else None)
+        if online:
+            await state.router_action("Gerät freigeben" if len(online) == 1 else f"{len(online)} Geräte freigeben",
+                                      unblock, done)
+        else:
+            done()
+
+    @routes.post("/api/security")
+    async def security(request):
+        """Strenger Modus: Neue Geräte kommen erst nach deiner Freigabe ins Internet."""
+        data = await body(request)
+        enabled = bool(data.get("strictMode"))
+        if enabled and data.get("trustExisting"):
+            snap = await state.snapshot()
+            for d in snap["devices"]:
+                if not d.get("isGuest") and not d.get("isBlocked"):
+                    store.update_device(d["id"], trusted=True)
+        if enabled:
+            caller = request.remote[7:] if (request.remote or "").startswith("::ffff:") else request.remote
+            snap = await state.snapshot()
+            mine = next((d for d in snap["devices"] if d.get("ip") == caller), None)
+            if mine:
+                store.update_device(mine["id"], trusted=True)
+        store.data["strictMode"] = enabled
+        store.save()
+        store.log("info", "Strenger Modus eingeschaltet: Neue Geräte brauchen deine Freigabe" if enabled
+                  else "Strenger Modus ausgeschaltet")
         return await snapshot_response()
 
     @routes.post("/api/devices/block")
@@ -214,9 +269,16 @@ def build_app(state) -> web.Application:
         data = await body(request)
         ids = {str(i) for i in data.get("ids", [])}
         snap = await state.snapshot()
-        devs = [d for d in snap["devices"] if d["id"] in ids and (d.get("ip") or state.demo)]
+        devs = [d for d in snap["devices"] if d["id"] in ids and (state.demo or (d.get("ip") and d.get("isOnline")))]
+        later = [i for i in ids if not any(d["id"] == i for d in devs)]
+        for mac in later:      # gerade offline: Spike sperrt beim nächsten Verbinden
+            store.update_device(mac, wantBlocked=True, autoBlocked=None)
+        if later:
+            store.log("deviceBlocked", f"{len(later)} Geräte werden beim nächsten Verbinden gesperrt" if len(later) > 1
+                      else "Gerät wird beim nächsten Verbinden gesperrt")
         if not devs:
-            raise ValueError("Diese Geräte haben gerade keine IP-Adresse. Sperren geht, sobald sie wieder verbunden sind.")
+            state.invalidate()
+            return await snapshot_response()
 
         async def block(token):
             for d in devs:
@@ -228,6 +290,7 @@ def build_app(state) -> web.Application:
         def done():
             for d in devs:
                 state.overrides.set(f"block:{d['id']}", True)
+                store.update_device(d["id"], autoBlocked=None, wantBlocked=None)
             store.log("deviceBlocked", f"Internet für {len(devs)} Geräte gesperrt" if len(devs) > 1
                       else f"Internet für „{devs[0]['name']}“ gesperrt")
         await state.router_action(f"{len(devs)} Geräte sperren" if len(devs) > 1 else f"„{devs[0]['name']}“ sperren",
@@ -245,14 +308,22 @@ def build_app(state) -> web.Application:
             store.update_device(mac, trusted=trusted, name=name)
             if trusted:
                 store.log("deviceTrusted", "Gerät als vertraut markiert")
+                if blocked is None:
+                    await release_auto_blocked([mac])
         if blocked is not None:
             blocked = bool(blocked)
             snap = await state.snapshot()
             dev = next((d for d in snap["devices"] if d["id"] == mac), None)
             if dev is None:
                 raise ValueError("Dieses Gerät kennt der Router nicht mehr.")
-            if not dev.get("ip") and not state.demo:
-                raise ValueError("Das Gerät hat gerade keine IP-Adresse. Sperren geht, sobald es wieder verbunden ist.")
+            if not state.demo and (not dev.get("ip") or not dev.get("isOnline")):
+                # Offline: Die FRITZ!Box kann nur verbundene Geräte sperren. Spike erledigt das beim nächsten Verbinden.
+                store.update_device(mac, wantBlocked=blocked, autoBlocked=None)
+                store.log("deviceBlocked" if blocked else "deviceTrusted",
+                          f"„{dev['name']}“ wird beim nächsten Verbinden gesperrt" if blocked
+                          else f"„{dev['name']}“ wird beim nächsten Verbinden freigegeben")
+                state.invalidate()
+                return await snapshot_response()
 
             async def block(token):
                 if state.demo:
@@ -262,6 +333,7 @@ def build_app(state) -> web.Application:
 
             def done():
                 state.overrides.set(f"block:{mac}", blocked)
+                store.update_device(mac, wantBlocked=None, autoBlocked=None)
                 store.log("deviceBlocked" if blocked else "deviceTrusted",
                           f"Internet für „{dev['name']}“ gesperrt" if blocked else f"„{dev['name']}“ wieder freigegeben")
             await state.router_action(f"„{dev['name']}“ sperren" if blocked else f"„{dev['name']}“ freigeben", block, done)

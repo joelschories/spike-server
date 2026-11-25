@@ -1,3 +1,11 @@
+## 0.6.0
+- Strenger Modus (optional): Neue Geräte kommen erst ins Internet, wenn du sie in der App freigibst. Geräte mit
+  der Spike-App sind automatisch freigegeben; beim Einschalten lassen sich alle vorhandenen Geräte übernehmen.
+  Spike prüft dann alle 10 Sekunden auf neue Geräte.
+- Geräte, die gerade offline sind, lassen sich jetzt sperren oder freigeben: Spike merkt sich den Wunsch und setzt
+  ihn um, sobald sich das Gerät wieder verbindet (die FRITZ!Box kann nur verbundene Geräte sperren).
+- Neuer Endpunkt POST /api/security {strictMode, trustExisting}; Geräte melden blockPending und autoBlocked.
+
 ## 0.5.2
 - Jugendschutz deutlich stärker: zusätzlich zur HaGeZi-Liste die OISD-NSFW-Liste (zusammen rund 500.000 Seiten
   statt 81.000).

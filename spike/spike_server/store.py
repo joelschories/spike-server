@@ -63,13 +63,27 @@ class Store:
             self.save()
         return devices[mac]
 
-    def update_device(self, mac: str, trusted: Optional[bool] = None, name: Optional[str] = None) -> None:
+    def update_device(self, mac: str, trusted: Optional[bool] = None, name: Optional[str] = None, **flags) -> None:
+        """flags: wantBlocked (True/False = beim nächsten Verbinden anwenden, None = erledigt),
+        autoBlocked (vom strengen Modus gesperrt, wartet auf Freigabe)."""
         d = self.device(mac)
         if trusted is not None:
             d["trusted"] = trusted
         if name:
             d["name"] = name[:60]
+        for key, value in flags.items():
+            if value is None:
+                d.pop(key, None)
+            else:
+                d[key] = value
         self.save()
+
+    def meta(self, mac: str) -> dict:
+        return self.data["devices"].get(mac, {})
+
+    @property
+    def strict_mode(self) -> bool:
+        return bool(self.data.get("strictMode"))
 
     def is_known(self, mac: str) -> bool:
         return mac in self.data["devices"]
