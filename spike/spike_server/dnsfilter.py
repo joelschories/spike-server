@@ -63,11 +63,17 @@ CATEGORIES = {
                "detail": "Instagram, TikTok, Facebook, Snapchat, X, Reddit, Pinterest und weitere."},
     "gambling": {"title": "Glücksspiel", "lists": ["gambling.medium"], "default": False,
                  "detail": "Online-Casinos, Sportwetten und Lotterien."},
-    "adult": {"title": "Erwachseneninhalte", "lists": ["nsfw"], "default": False,
-              "detail": "Pornografische und andere nicht jugendfreie Seiten."},
+    "adult": {"title": "Erwachseneninhalte", "lists": ["nsfw", "oisd-nsfw"], "default": False,
+              "detail": "Pornografische und andere nicht jugendfreie Seiten. Schaltet auch SafeSearch bei Google, "
+                        "Bing und DuckDuckGo ein, damit die Bildersuche keine solchen Inhalte zeigt."},
 }
 CATEGORY_LABEL = {"ads": "Werbung", "threats": "Gefahr", "gambling": "Glücksspiel", "adult": "Jugendschutz",
                   "bypass": "Umgehung", "native": "Hersteller", "social": "Soziale Netzwerke", "custom": "Eigene Liste"}
+
+# Listen, die nicht von HaGeZi kommen: Name → Adresse
+EXTRA_SOURCES = {
+    "oisd-nsfw": "https://nsfw.oisd.nl/domainswild2",
+}
 
 UPSTREAMS = {
     "quad9": ["https://9.9.9.9/dns-query", "https://149.112.112.112/dns-query"],
@@ -77,12 +83,13 @@ UPSTREAMS = {
 PLAIN_FALLBACK = ["9.9.9.9", "1.1.1.1"]
 
 # SafeSearch: Suchmaschinen liefern unter diesen Namen nur gefilterte Ergebnisse.
+# (Muster, Ziel, gilt auch automatisch beim Jugendschutz?)
 SAFESEARCH = [
-    (re.compile(r"^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$"), "forcesafesearch.google.com"),
+    (re.compile(r"^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$"), "forcesafesearch.google.com", True),
     (re.compile(r"^(www\.|m\.)?youtube\.com$|^youtubei\.googleapis\.com$|^youtube\.googleapis\.com$"
-                r"|^www\.youtube-nocookie\.com$"), "restrictmoderate.youtube.com"),
-    (re.compile(r"^(www\.)?bing\.com$"), "strict.bing.com"),
-    (re.compile(r"^(www\.)?duckduckgo\.com$"), "safe.duckduckgo.com"),
+                r"|^www\.youtube-nocookie\.com$"), "restrictmoderate.youtube.com", False),
+    (re.compile(r"^(www\.)?bing\.com$"), "strict.bing.com", True),
+    (re.compile(r"^(www\.)?duckduckgo\.com$"), "safe.duckduckgo.com", True),
 ]
 
 LOCAL_SUFFIXES = (".fritz.box", ".box", ".lan", ".local", ".home.arpa", ".internal")
@@ -346,7 +353,7 @@ class DnsFilter:
                     pass
 
     async def _download(self, name: str, path: Path) -> None:
-        url = f"{LIST_BASE}{name}-onlydomains.txt"
+        url = EXTRA_SOURCES.get(name) or f"{LIST_BASE}{name}-onlydomains.txt"
         try:
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 r = await client.get(url)
@@ -400,10 +407,14 @@ class DnsFilter:
         return None
 
     def safesearch_target(self, name: str) -> Optional[str]:
-        if not (self.active and self.settings["safeSearch"]):
+        if not self.active:
             return None
-        for pattern, target in SAFESEARCH:
-            if pattern.match(name):
+        forced = self.settings["safeSearch"]
+        adult = bool(self.settings["categories"].get("adult"))
+        if not (forced or adult):
+            return None
+        for pattern, target, with_adult in SAFESEARCH:
+            if pattern.match(name) and (forced or with_adult):
                 return target
         return None
 

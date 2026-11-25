@@ -1,3 +1,9 @@
+## 0.5.2
+- Jugendschutz deutlich stärker: zusätzlich zur HaGeZi-Liste die OISD-NSFW-Liste (zusammen rund 500.000 Seiten
+  statt 81.000).
+- Ist der Jugendschutz an, zeigen Google, Bing und DuckDuckGo automatisch nur jugendfreie Ergebnisse
+  (SafeSearch). Sonst kam man über die Bildersuche an solche Inhalte, ohne eine Seite aufzurufen.
+
 ## 0.5.1
 - Wichtig: „Gast-WLAN unsichtbar“ entfernt. Die FRITZ!Box kennt dafür nur einen gemeinsamen Schalter und hat
   dabei auch das Heimnetz versteckt. Spike macht nach dem Update einmalig alle WLAN-Namen wieder sichtbar.

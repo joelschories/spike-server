@@ -29,7 +29,7 @@ eigene DNS-Dienste umgehen. Optional blockiert er Hersteller-Tracking (Smart-TVs
 Glücksspiel und Erwachseneninhalte und kann SafeSearch erzwingen. Alle übrigen Anfragen gehen verschlüsselt (DNS over HTTPS) an Quad9, Cloudflare oder Google.
 Namen aus dem Heimnetz (z. B. `fritz.box`) beantwortet weiterhin der Router.
 
-Blocklisten: [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists) (Pro bzw. Pro++ im strengen Modus,
+Blocklisten: [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists) (Pro bzw. Pro++ im strengen Modus, NSFW zusammen mit [OISD NSFW](https://oisd.nl),
 Threat Intelligence Medium, DoH/VPN/Proxy-Bypass, Native Tracker), werden alle 6 Stunden aktualisiert.
 
 Aktivieren: In der FRITZ!Box unter Internet › Zugangsdaten › DNS-Server die IP-Adresse von Spike als
