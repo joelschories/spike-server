@@ -299,6 +299,12 @@ def build_app(state) -> web.Application:
         data = await body(request)
         ssid = str(data.get("ssid", "")).strip()[:32] or None
         hidden = data.get("hidden")
+        if hidden:
+            # Die FRITZ!Box kennt nur einen gemeinsamen Schalter für alle WLANs: „unsichtbar“ würde auch
+            # das Heimnetz verstecken. Deshalb bietet Spike das nicht mehr an.
+            raise ValueError("Die FRITZ!Box kann nur alle WLANs gemeinsam verstecken, nicht das Gast-WLAN allein. "
+                             "Damit dein Heimnetz sichtbar bleibt, bleibt auch das Gast-WLAN sichtbar.")
+        hidden = None if hidden is None else False
         enable = data.get("enable")
         snap = await state.snapshot()
         needs_password = not snap["guest"].get("password")
@@ -321,7 +327,7 @@ def build_app(state) -> web.Application:
             if password:
                 await fb.set_guest_password(password, token)
             if hidden is not None:
-                await fb.set_guest_hidden(bool(hidden), token)
+                await fb.set_all_visible(token)
             if enable is not None:
                 await fb.set_guest(bool(enable), token)
 

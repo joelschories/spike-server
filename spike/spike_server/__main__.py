@@ -20,6 +20,7 @@ from .config import RouterSettings, load
 from .demo import Demo
 from .discovery import Announcer, lan_ip
 from .dnsfilter import DnsFilter, dns_port, lan_ipv6
+from .dhcpprobe import lan_dns_servers
 from .fritzbox import Confirmation, ConfirmationNeeded, Confirmations, FritzBox
 from .pairing import Pairing
 from .snapshot import Overrides, empty_snapshot, from_fritzbox
@@ -167,7 +168,26 @@ class State:
                 print(f"[spike] Hintergrundprüfung fehlgeschlagen: {exc}", flush=True)
             if tick % 2 == 1:
                 await self._check_health(router_ok, router_detail)
+            if router_ok and (tick == 1 or tick % 120 == 0):
+                await self._repair_visibility()
             self.watcher.save_if_needed()
+
+    async def _repair_visibility(self) -> None:
+        """Bis 0.5.0 konnte Spike das Gast-WLAN „unsichtbar“ schalten. Die FRITZ!Box versteckt dabei aber alle
+        WLANs, auch das Heimnetz. Einmalig alle wieder sichtbar machen."""
+        if not self.fritz or self.store.data.get("visibilityRepaired"):
+            return
+        try:
+            hidden = await self.fritz.hidden_wlans()
+            if hidden:
+                await self.fritz.set_all_visible()
+                self.store.log("info", "WLAN-Namen sind wieder sichtbar")
+                print(f"[spike] WLAN-Namen wieder sichtbar gemacht ({hidden})", flush=True)
+                self.invalidate()
+            self.store.data["visibilityRepaired"] = True
+            self.store.save()
+        except Exception as exc:
+            print(f"[spike] Konnte WLAN-Sichtbarkeit nicht prüfen: {exc}", flush=True)
 
     async def _check_health(self, router_ok: bool, router_detail: str) -> None:
         health = [await self.dns.health()]
@@ -215,13 +235,27 @@ class State:
         # Wächter
         self.watcher.update_devices(snap["devices"], self.config.router.host, self.ip)
         names = {d["ip"]: d["name"] for d in snap["devices"] if d.get("ip")}
-        lan_dns = snap.get("lanDns")
+        lan_dns = await self._lan_dns()
         local_dns = None if lan_dns is None else self.ip in lan_dns
         snap["watch"] = self.watcher.snapshot(self.dns.clients_in_use(), dict(self.dns.client_queries), names,
                                               local_dns)
         if snap.get("routerConnected", True):
             snap["score"] = max(0, compute_score(snap["checks"], snap["devices"]) - self.watcher.penalty())
         return snap
+
+    async def _lan_dns(self):
+        """Welchen DNS-Server verteilt der Router per DHCP? Alle 5 Minuten neu gefragt."""
+        if self.demo:
+            return None
+        now = time.time()
+        cached = getattr(self, "_lan_dns_cache", None)
+        if cached and now - cached[0] < 300:
+            return cached[1]
+        result = await lan_dns_servers(self.ip, self.config.router.host)
+        if result is None and cached:
+            result = cached[1]
+        self._lan_dns_cache = (now, result)
+        return result
 
     async def _router_snapshot(self) -> dict:
         if self.demo:
@@ -243,9 +277,10 @@ async def main():
         return
     runner = announcer = None
     try:
-        await state.setup()
+        # Zuerst der DNS-Server: Das Heimnetz hängt an ihm, jede Sekunde ohne Antwort merkt man beim Surfen
         if os.environ.get("SPIKE_DNS", "1") != "0":
             await state.dns.start()
+        await state.setup()
         runner = web.AppRunner(build_app(state), access_log=None)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", state.config.port,

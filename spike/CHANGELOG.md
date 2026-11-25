@@ -1,3 +1,15 @@
+## 0.5.1
+- Wichtig: „Gast-WLAN unsichtbar“ entfernt. Die FRITZ!Box kennt dafür nur einen gemeinsamen Schalter und hat
+  dabei auch das Heimnetz versteckt. Spike macht nach dem Update einmalig alle WLAN-Namen wieder sichtbar.
+- Schutzfilter zuverlässiger: Der DNS-Server startet vor allem anderen. Antwortet der DNS-Anbieter nicht sofort,
+  fragt Spike nach 1,5 Sekunden mehrere Ausweichserver gleichzeitig (vorher bis zu 12 Sekunden Warten).
+  Ist das Internet kurz weg, liefert Spike die letzte bekannte Antwort statt eines Fehlers.
+- Antworten tragen immer exakt die Frage des Geräts (auch Groß-/Kleinschreibung) und richten sich nach der
+  Paketgröße, die das Gerät annimmt.
+- Zusätzlich blockiert: Werbe-Server großer deutscher Nachrichtenseiten (u. a. asadcdn.com, html-load.com).
+- Wächter: Spike fragt den DHCP-Server der FRITZ!Box, welchen DNS-Server sie verteilt, und erkennt so sicher,
+  ob die Sicht pro Gerät eingerichtet ist. Die Sicht pro Gerät ist ein optionales Extra.
+
 ## 0.5.0
 - Schutzfilter deutlich stärker: HaGeZi Pro statt Multi (strenger Modus: Pro++, blockiert auch Google-Werbelinks)
   und Threat Intelligence Medium statt Mini. Zusammen rund 500.000 Einträge.

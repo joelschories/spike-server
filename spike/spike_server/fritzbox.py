@@ -288,6 +288,22 @@ class FritzBox:
     async def set_guest_ssid(self, ssid: str, token: Optional[str] = None) -> None:
         await self.call(WLAN.format(self.guest_index), "SetSSID", token=token, NewSSID=ssid)
 
+    async def hidden_wlans(self) -> List[int]:
+        """WLAN-Konfigurationen, deren Name gerade nicht ausgestrahlt wird."""
+        out = []
+        for i in self.wlan_indexes():
+            res = await self.try_call(WLAN.format(i), "GetBeaconAdvertisement")
+            if res and res.get("NewBeaconAdvertisementEnabled", "1") == "0":
+                out.append(i)
+        return out
+
+    async def set_all_visible(self, token: Optional[str] = None) -> None:
+        """Alle WLAN-Namen wieder ausstrahlen (Heimnetz und Gast-WLAN)."""
+        for i in self.wlan_indexes():
+            res = await self.try_call(WLAN.format(i), "GetBeaconAdvertisement")
+            if res and res.get("NewBeaconAdvertisementEnabled", "1") == "0":
+                await self.call(WLAN.format(i), "SetBeaconAdvertisement", token=token, NewBeaconAdvertisementEnabled=1)
+
     async def set_guest_hidden(self, hidden: bool, token: Optional[str] = None) -> None:
         """Gast-WLAN unsichtbar: Der Name erscheint in keiner WLAN-Liste, verbinden geht per QR-Code."""
         await self.call(WLAN.format(self.guest_index), "SetBeaconAdvertisement", token=token,

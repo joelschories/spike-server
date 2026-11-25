@@ -33,7 +33,9 @@ LIST_BASE = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/"
 # "lists": HaGeZi-Listen (normal), "strict": Listen im strengen Modus, "builtin": fest eingebaute Adressen.
 CATEGORIES = {
     "ads": {"title": "Werbung & Tracker", "lists": ["pro"], "strict": ["pro.plus"], "default": True,
-            "builtin": ["adservice.google.com", "adservice.google.de", "googletagservices.com"],
+            "builtin": ["adservice.google.com", "adservice.google.de", "googletagservices.com",
+                        # Werbung und Werbeblocker-Umgehung großer deutscher Nachrichtenseiten
+                        "asadcdn.com", "html-load.com", "tisoomi.com", "s.tstat.net"],
             "detail": "Werbebanner, Pop-ups, Tracker, Telemetrie und Datensammler."},
     "threats": {"title": "Betrug & Schadsoftware", "lists": ["tif.medium"], "default": True,
                 "detail": "Phishing, Fake-Shops, Abzocke, Schadsoftware und Krypto-Miner."},
@@ -406,22 +408,35 @@ class DnsFilter:
         return None
 
     # --- Weiterleiten ------------------------------------------------------------
+    async def _doh(self, url: str, query: bytes, timeout: float) -> bytes:
+        r = await asyncio.wait_for(self.client.post(url, content=query, headers={
+            "Content-Type": "application/dns-message", "Accept": "application/dns-message"}), timeout)
+        if r.status_code != 200 or len(r.content) < 12:
+            raise ConnectionError(f"HTTP {r.status_code}")
+        return r.content
+
     async def forward(self, query: bytes) -> bytes:
-        urls = UPSTREAMS[self.settings["upstream"]] + [u for k, v in UPSTREAMS.items()
-                                                      if k != self.settings["upstream"] for u in v[:1]]
-        for url in urls:
-            try:
-                r = await self.client.post(url, content=query, headers={
-                    "Content-Type": "application/dns-message", "Accept": "application/dns-message"})
-                if r.status_code == 200 and len(r.content) >= 12:
-                    return r.content
-            except Exception:
-                continue
-        for ip in PLAIN_FALLBACK:
-            try:
-                return await self._udp(query, ip, 53, timeout=3)
-            except Exception:
-                continue
+        """Verschlüsselt beim gewählten Anbieter nachfragen. Antwortet der nicht schnell, fragt Spike
+        gleichzeitig mehrere Ausweichserver und nimmt die erste Antwort. So hängt keine Seite."""
+        primary = UPSTREAMS[self.settings["upstream"]]
+        try:
+            return await self._doh(primary[0], query, 1.5)
+        except Exception:
+            pass
+        others = [u for k, v in UPSTREAMS.items() if k != self.settings["upstream"] for u in v[:1]]
+        tasks = [asyncio.ensure_future(self._doh(u, query, 2.5)) for u in [primary[1]] + others]
+        tasks += [asyncio.ensure_future(self._udp(query, ip, 53, timeout=2.5)) for ip in PLAIN_FALLBACK]
+        try:
+            for fut in asyncio.as_completed(tasks, timeout=3):
+                try:
+                    return await fut
+                except Exception:
+                    continue
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            for t in tasks:
+                t.cancel()
         raise ConnectionError("Kein DNS-Server erreichbar")
 
     async def _udp(self, query: bytes, host: str, port: int, timeout: float = 3) -> bytes:
@@ -482,10 +497,12 @@ class DnsFilter:
         cached = self.cache.get(key)
         if cached and cached[1] > time.time():
             self._observe(client, name, cached[0][3] & 0x0F, None)
-            return query[:2] + cached[0][2:]
+            return _with_question(query, qend, cached[0])
         try:
             answer = await self.forward(query)
         except Exception:
+            if cached:      # Internet kurz weg: lieber die letzte bekannte Antwort als gar keine
+                return _with_question(query, qend, cached[0])
             return servfail(query, qend)
         rcode = answer[3] & 0x0F
         self._observe(client, name, rcode, None)
@@ -598,7 +615,7 @@ class DnsFilter:
                         out = await dns.resolve(data, _client(addr[0]))
                         if out:
                             parsed = parse_query(data)
-                            if len(out) > 1232 and parsed:   # zu groß für UDP: Client fragt per TCP neu
+                            if parsed and len(out) > udp_limit(data, parsed[2]):   # zu groß: Client fragt per TCP neu
                                 out = out[:2] + bytes([out[2] | 0x02, out[3]]) + struct.pack(">HHHH", 1, 0, 0, 0) \
                                     + data[12:parsed[2]]
                             self.transport.sendto(out, addr)
@@ -750,6 +767,30 @@ class DnsFilter:
                                "category": CATEGORY_LABEL.get(r["category"], "Werbung")} for r in list(self.recent)[:25]],
             "listsUpdated": self.lists_updated,
         }
+
+
+def _with_question(query: bytes, qend: int, answer: bytes) -> bytes:
+    """Gespeicherte Antwort mit der ID und der Frage (inkl. Groß-/Kleinschreibung) der aktuellen Anfrage.
+    Manche Resolver mischen die Schreibweise zufällig und verwerfen Antworten, die nicht exakt passen."""
+    try:
+        _, aend = _read_name(answer, 12)
+        aend += 4
+    except ValueError:
+        return query[:2] + answer[2:]
+    if aend != qend:
+        return query[:2] + answer[2:]
+    return query[:2] + answer[2:12] + query[12:qend] + answer[qend:]
+
+
+def udp_limit(query: bytes, qend: int) -> int:
+    """Größte Antwort per UDP, die der Fragende annimmt (EDNS), höchstens 4096 Byte."""
+    try:
+        if struct.unpack(">H", query[10:12])[0] and query[qend] == 0 and \
+                struct.unpack(">H", query[qend + 1:qend + 3])[0] == 41:
+            return max(512, min(4096, struct.unpack(">H", query[qend + 3:qend + 5])[0]))
+    except (IndexError, struct.error):
+        pass
+    return 512
 
 
 def _client(ip: str) -> str:

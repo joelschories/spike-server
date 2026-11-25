@@ -101,7 +101,6 @@ async def from_fritzbox(fb, store, overrides: Overrides, dns=None, server_ip: st
     user = await fb.cached("user", 300, fb.current_user)
     two_factor = await fb.cached("2fa", 300, fb.two_factor_enabled)
     wifi = await fb.cached("wifi", 120, fb.wifi)
-    lan_dns = await fb.cached("landns", 30, fb.lan_dns_servers)
 
     devices = []
     names: Dict[str, str] = {}
@@ -208,12 +207,11 @@ async def from_fritzbox(fb, store, overrides: Overrides, dns=None, server_ip: st
         "guest": {"enabled": guest_on, "ssid": guest["ssid"], "password": guest["password"],
                   "security": _security_label(guest.get("beacon", "")),
                   "isolated": guest.get("isolated", True),
-                  "hidden": overrides.apply("guestHidden", guest.get("hidden", False)),
+                  "hidden": False,
                   "configured": bool(guest["ssid"] and guest["password"]),
                   "supported": guest.get("supported", True)},
         "checks": checks,
         "filter": filter_snap or empty_filter(),
-        "lanDns": lan_dns,
         "events": store.events(),
         "score": 0,
         "generatedAt": utc_now(),
