@@ -1,4 +1,4 @@
-"""Spike-Wächter.
+"""Spike Guard.
 
 Lernt aus den DNS-Anfragen, wie sich jedes Gerät normalerweise verhält, und meldet Abweichungen:
 - Hinweise auf Schadsoftware (zufällig aussehende Domains, wie sie Schadprogramme erzeugen),
@@ -201,7 +201,7 @@ class Watcher:
                  "status": "open"}
         self.data["alerts"].insert(0, alert)
         del self.data["alerts"][200:]
-        self.log("newDevice" if severity == "critical" else "filter", f"Wächter: {title} ({alert['device']})")
+        self.log("newDevice" if severity == "critical" else "filter", f"Guard: {title} ({alert['device']})")
         if severity == "critical" and self.data["autoQuarantine"] and alert["mac"] and self.quarantine:
             self.quarantine(alert)
 

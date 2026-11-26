@@ -224,7 +224,7 @@ class State:
                     await self.fritz.set_blocked(dev["ip"], True)
                 self.overrides.set(f"block:{dev['id']}", True)
                 alert["status"] = "blocked"
-                self.store.log("deviceBlocked", f"Wächter hat „{dev['name']}“ vorsorglich vom Internet getrennt")
+                self.store.log("deviceBlocked", f"Guard hat „{dev['name']}“ vorsorglich vom Internet getrennt")
                 self.invalidate()
             except Exception as exc:
                 alert["detail"] += " Automatisches Sperren war nicht möglich: " + str(exc)

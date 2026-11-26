@@ -528,10 +528,10 @@ class DnsFilter:
             try:
                 self.observer(client, name, rcode, category)
             except Exception as exc:
-                print(f"[spike] Wächter-Fehler: {exc}", flush=True)
+                print(f"[spike] Guard-Fehler: {exc}", flush=True)
 
     async def health(self) -> dict:
-        """Prüft, ob die verschlüsselte Weiterleitung antwortet (für den Wächter)."""
+        """Prüft, ob die verschlüsselte Weiterleitung antwortet (für Guard)."""
         if not self.available:
             return {"id": "dns", "title": "Namensauflösung", "ok": False,
                     "detail": self.problem or "Der Schutzfilter läuft nicht."}

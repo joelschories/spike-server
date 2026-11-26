@@ -467,7 +467,7 @@ def build_app(state) -> web.Application:
             state.watcher.resolve(aid, "dismissed")
         elif action == "trust":
             state.watcher.resolve(aid, "trusted")
-            store.log("deviceTrusted", f"Wächter: „{alert['device']}“ ist in Ordnung")
+            store.log("deviceTrusted", f"Guard: „{alert['device']}“ ist in Ordnung")
         elif action == "block":
             snap = await state.snapshot()
             dev = next((d for d in snap["devices"] if d["id"] == alert["mac"]), None)
@@ -483,7 +483,7 @@ def build_app(state) -> web.Application:
             def done():
                 state.overrides.set(f"block:{dev['id']}", True)
                 state.watcher.resolve(aid, "blocked")
-                store.log("deviceBlocked", f"Wächter: „{dev['name']}“ vom Internet getrennt")
+                store.log("deviceBlocked", f"Guard: „{dev['name']}“ vom Internet getrennt")
             await state.router_action(f"„{dev['name']}“ sperren", block, done)
         else:
             raise ValueError("Unbekannte Aktion.")

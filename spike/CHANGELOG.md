@@ -1,3 +1,6 @@
+## 0.6.1
+- Der Spike-Wächter heißt jetzt Spike Guard.
+
 ## 0.6.0
 - Strenger Modus (optional): Neue Geräte kommen erst ins Internet, wenn du sie in der App freigibst. Geräte mit
   der Spike-App sind automatisch freigegeben; beim Einschalten lassen sich alle vorhandenen Geräte übernehmen.
