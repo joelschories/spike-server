@@ -112,6 +112,8 @@ async def from_fritzbox(fb, store, overrides: Overrides, dns=None, server_ip: st
         meta = store.device(mac)
         name = meta.get("name") or h.get("HostName") or mac
         online = h.get("Active") == "1"
+        if online:
+            store.mark_online(mac)
         is_guest = h.get("X_AVM-DE_Guest") == "1"
         if not known_before and online and not is_guest:
             store.log("newDevice", f"Unbekanntes Gerät „{name}“ verbunden")
@@ -126,7 +128,9 @@ async def from_fritzbox(fb, store, overrides: Overrides, dns=None, server_ip: st
             "connection": "wifi" if iface.startswith("802.11") else ("lan" if iface == "Ethernet" else "unknown"),
             "isOnline": online, "isTrusted": bool(meta.get("trusted")),
             "isBlocked": overrides.apply(f"block:{mac}", blocked),
-            "isGuest": is_guest, "firstSeen": meta["first_seen"], "lastSeen": utc_now(),
+            "isGuest": is_guest, "firstSeen": meta["first_seen"],
+            # Zuletzt online: jetzt, oder der Zeitpunkt, an dem Spike das Gerät zuletzt online gesehen hat
+            "lastSeen": utc_now() if online else meta.get("last_online"),
         })
 
     if wps is not None:

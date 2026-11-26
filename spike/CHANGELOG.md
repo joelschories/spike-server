@@ -1,3 +1,7 @@
+## 0.6.2
+- „Zuletzt online“ stimmt jetzt: Spike merkt sich, wann ein Gerät zuletzt verbunden war, statt immer die
+  aktuelle Uhrzeit zu melden.
+
 ## 0.6.1
 - Der Spike-Wächter heißt jetzt Spike Guard.
 

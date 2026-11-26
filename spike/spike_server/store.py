@@ -78,6 +78,16 @@ class Store:
                 d[key] = value
         self.save()
 
+    def mark_online(self, mac: str) -> None:
+        """Merkt sich, wann ein Gerät zuletzt online war (gespeichert höchstens alle 10 Minuten pro Gerät)."""
+        d = self.device(mac)
+        now = now_iso()
+        last = d.get("last_online")
+        d["last_online"] = now
+        if not last or (datetime.fromisoformat(now.replace("Z", "+00:00"))
+                        - datetime.fromisoformat(last.replace("Z", "+00:00"))).total_seconds() > 600:
+            self.save()
+
     def meta(self, mac: str) -> dict:
         return self.data["devices"].get(mac, {})
 
