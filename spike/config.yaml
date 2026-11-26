@@ -1,7 +1,7 @@
 # Spike läuft hier nur als Container auf deinem Raspberry. Es erscheint nicht in
 # Home Assistant und greift nicht darauf zu – Home Assistant dient nur als Installationsweg.
 name: Spike
-version: "0.6.2"
+version: "0.7.0"
 slug: spike
 description: Spike-Server für die Spike-App (Heimnetz-Sicherheit). Läuft unabhängig von Home Assistant.
 url: https://github.com/joelschories/spike-server

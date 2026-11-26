@@ -14,7 +14,7 @@ from typing import Dict, Awaitable, Callable, Optional
 
 from aiohttp import web
 
-from . import VERSION
+from . import MIN_APP_VERSION, VERSION
 from .api import build_app
 from .config import RouterSettings, load
 from .demo import Demo
@@ -24,6 +24,7 @@ from .dhcpprobe import lan_dns_servers
 from .fritzbox import Confirmation, ConfirmationNeeded, Confirmations, FritzBox
 from .pairing import Pairing
 from .snapshot import Overrides, empty_snapshot, from_fritzbox
+from .updates import latest_version, newer
 from .store import Store
 from .tls import ensure_certificate, server_context
 from .snapshot import compute_score
@@ -75,6 +76,7 @@ class State:
         self.enforce_lock = asyncio.Lock()
         self.enforce_retry: Dict[str, float] = {}
         self.security_problem: Optional[str] = None
+        self.latest_version: Optional[str] = None
         self.watcher = Watcher(self.config.data_dir, self.store.log)
         self.dns.observer = self.watcher.observe
         self.watcher.quarantine = self._auto_quarantine
@@ -250,11 +252,29 @@ class State:
             d["blockPending"] = bool(meta["wantBlocked"]) if meta.get("wantBlocked") is not None else None
             d["autoBlocked"] = bool(meta.get("autoBlocked")) and not d.get("isTrusted")
         snap["security"] = {"strictMode": self.store.strict_mode, "problem": self.security_problem}
+        snap["serverInfo"] = self.server_info()
         if snap.get("routerConnected", True):
             snap["score"] = max(0, compute_score(snap["checks"], snap["devices"]) - self.watcher.penalty())
         if not self.enforce_lock.locked():
             asyncio.ensure_future(self.enforce(snap))
         return snap
+
+    def server_info(self) -> dict:
+        return {"version": VERSION, "latestVersion": self.latest_version,
+                "updateAvailable": newer(self.latest_version, VERSION),
+                "minAppVersion": MIN_APP_VERSION, "mode": self.config.mode}
+
+    async def check_updates(self) -> None:
+        """Kurz nach dem Start und dann zweimal am Tag nach einer neuen Version schauen."""
+        await asyncio.sleep(60)
+        while True:
+            latest = await latest_version()
+            if latest:
+                if newer(latest, VERSION) and latest != self.latest_version:
+                    print(f"[spike] Neue Version verfügbar: {latest} (installiert: {VERSION})", flush=True)
+                self.latest_version = latest
+                self.invalidate()
+            await asyncio.sleep(12 * 3600)
 
     async def set_block(self, device: dict, blocked: bool) -> bool:
         """Sperrt oder entsperrt ein Gerät ohne Rückfrage. False, wenn die FRITZ!Box das nicht zulässt."""
@@ -364,6 +384,7 @@ async def main():
                               state.fingerprint, state.config.mode)
         await announcer.start()
         watcher = asyncio.ensure_future(state.watch())
+        updates = asyncio.ensure_future(state.check_updates())
         print(f"[spike] Spike {VERSION} läuft verschlüsselt auf Port {state.config.port} ({state.config.mode}, "
               f"Daten in {state.config.data_dir})", flush=True)
         if state.store.paired_count() == 0:
@@ -375,6 +396,7 @@ async def main():
             loop.add_signal_handler(sig, stop.set)
         await stop.wait()
         watcher.cancel()
+        updates.cancel()
         print("[spike] Wird beendet, melde mich im Heimnetz ab …", flush=True)
     finally:
         # Auch nach einem Fehler alles freigeben, damit ein Neustart die Ports wieder bekommt

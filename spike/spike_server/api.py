@@ -64,6 +64,7 @@ def build_app(state) -> web.Application:
             "name": state.config.server_name, "version": VERSION, "id": store.server_id,
             "mode": state.config.mode, "paired": store.paired_count() > 0,
             "routerConfigured": state.router_ready, "fingerprint": state.fingerprint,
+            "latestVersion": state.latest_version, "minAppVersion": state.server_info()["minAppVersion"],
         })
 
     @routes.get("/api/diagnostics")

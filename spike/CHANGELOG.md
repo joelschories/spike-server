@@ -1,3 +1,9 @@
+## 0.7.0
+- Update-Check: Spike schaut zweimal am Tag nach, ob es eine neuere Version gibt (es wird nur die öffentliche
+  Versionsdatei aus dem GitHub-Projekt abgerufen). Die App zeigt dann einen Hinweis mit der passenden Anleitung
+  für Home Assistant, Raspberry Pi OS oder Docker.
+- Kompatibilität: Server und App melden sich gegenseitig, welche Version sie mindestens brauchen.
+
 ## 0.6.2
 - „Zuletzt online“ stimmt jetzt: Spike merkt sich, wann ein Gerät zuletzt verbunden war, statt immer die
   aktuelle Uhrzeit zu melden.
